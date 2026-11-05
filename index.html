@@ -702,7 +702,7 @@ html:root[data-theme]{--c1:#3498db;--c2:#e67e22;--c3:#1abc9c;--c4:#f1c40f;--c5:#
 const $ = (s, r = document) => r.querySelector(s);
 const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 const KEY = "spese.data";
-const BUILD = "20261103153117";
+const BUILD = "20261105111759";
 /* icone delle categorie (24×24, tratto) */
 const ICONS = {
   casa: '<path d="M4 10.5 12 4l8 6.5V19a1 1 0 0 1-1 1h-4.5v-5.5h-5V20H5a1 1 0 0 1-1-1z"/>',
@@ -2131,7 +2131,7 @@ document.addEventListener("paste", e => {
   const txt = dt?.getData("text/plain") || "";
   if (txt.trim()) return readReceiptText(txt);
   const types = [...(dt?.types || [])].join(", ");
-  toast(types ? `Negli appunti c'è qualcosa che non so leggere (${types}). Salva il PDF in File e usa "Foto o PDF".` : "Gli appunti sono vuoti: copia prima lo scontrino nell'app Coop");
+  toast(types ? `Negli appunti c'è qualcosa che non so leggere (${types}). Salva il PDF sul telefono e usa "Foto o PDF".` : "Gli appunti sono vuoti: copia prima lo scontrino nell'app Coop");
 });
 
 /* se iOS inserisce il contenuto senza passare dall'evento "paste" (succede con alcune immagini) lo recupero dal riquadro */
@@ -2398,7 +2398,7 @@ function ghBox(){
     <input type="text" id="ghRepo" placeholder="utente/repository, es. tuo-utente/spese-backup" value="${esc(GH.repo || "")}" autocomplete="off" autocapitalize="off" spellcheck="false">
     <input type="password" id="ghToken" placeholder="Token GitHub (github_pat_…)" autocomplete="off" autocapitalize="off" spellcheck="false">
     <button class="btn" data-act="ghOn">Collega e fai il primo backup</button></div></div>
-    <div class="help" style="padding:8px 4px 0">Una volta sola, da Safari:<ol>
+    <div class="help" style="padding:8px 4px 0">Una volta sola, dal browser:<ol>
       <li>Crea un repository <b>privato</b> chiamato <b>spese-backup</b> su <a href="https://github.com/new" target="_blank" rel="noopener">github.com/new</a>.</li>
       <li>Crea un token su <a href="https://github.com/settings/personal-access-tokens/new" target="_blank" rel="noopener">github.com/settings/personal-access-tokens/new</a>: in <i>Repository access</i> scegli <i>Only select repositories</i> → spese-backup; in <i>Permissions</i> → <i>Contents</i> scegli <i>Read and write</i>; come scadenza metti la più lunga possibile.</li>
       <li>Copia il token e incollalo qui sopra.</li></ol>
