@@ -35,8 +35,8 @@ Pubblicata su GitHub Pages, installata dalla schermata Home di Safari (modalità
   Dopo la lettura: procedura guidata per i prodotti poco chiari, poi l'utente scrive totale e sconti.
 - **Backup GitHub**: `ghCheck`, `backupNow`, `scheduleBackup`, `ghRestore` (API Contents, file `spese.json`).
 - **Auto-aggiornamento**: costante `BUILD` in `index.html` + `version.json` (`{"v": BUILD}`).
-  **Ogni volta che modifichi l'app aggiorna entrambi con lo stesso valore** (es. data e ora `AAAAMMGGhhmmss`),
-  altrimenti il telefono non si aggiorna.
+  **Ogni volta che modifichi l'app esegui `python3 build.py`**: scrive lo stesso valore (`AAAAMMGGhhmmss`) in entrambi
+  e aggiorna la CSP, altrimenti il telefono non si aggiorna (o l'app non parte).
 
 ## iPhone: cose già risolte, da non rompere
 
@@ -45,17 +45,23 @@ Pubblicata su GitHub Pages, installata dalla schermata Home di Safari (modalità
   (c'è una media query `max-width:360px` per gli schermi stretti).
 - Input con `font-size:16px` per evitare lo zoom automatico di Safari. Tastierino numerico interno per gli importi.
 
-## Sicurezza: da sistemare (segnalato da una revisione, non ancora corretto)
+## Sicurezza (corretta il 05/11/2026)
 
-1. **XSS da backup**: in vari punti gli id finiscono negli attributi senza `esc()` (`data-cat="${c.cat.id}"`,
-   `data-tx`, `data-del`, `data-pick`, `data-psub`, `data-id`…), e `applyData()`/`restore()` controllano solo che
-   `cats` e `tx` siano array. Correzione: passare tutti gli id da `esc()` e **validare/sanificare** ogni backup
-   (id `^[a-z0-9_-]+$` altrimenti rigenerati con riferimenti aggiornati, date `YYYY-MM-DD`, importi interi,
-   `type` in/out, colori numero 0–7 o `#rrggbb`, campi sconosciuti scartati), anche per i dati già salvati.
-   Includere `learn` e `names` nel ripristino (oggi vanno persi).
-2. **CSP** in un `<meta>`: `connect-src 'self' https://api.anthropic.com https://api.github.com`, font da Google.
-3. Chiavi in localStorage: tutte le app pubblicate sotto lo stesso `utente.github.io` condividono l'origine.
-   Per isolarla serve un dominio/sottodominio dedicato.
+- **Validazione**: `sanitize(d)` (prima di `fresh()`) è l'unico punto d'ingresso dei dati: dati già salvati al caricamento,
+  file di backup (`restore`), backup GitHub (`ghRead`) e `applyData`. Scarta campi sconosciuti, rigenera gli id non validi
+  (`^[a-z0-9_.-]{1,64}$`) aggiornando i riferimenti (cat/sub dei movimenti), controlla date `YYYY-MM-DD` reali, importi,
+  `type` in/out, colori (-1…7 o `#rrggbb`), icone presenti in `ICONS`, id categoria prodotto, `learn` e `names`.
+  Se i dati salvati sono illeggibili ne resta una copia in `localStorage["spese.data.bad"]` prima di ripartire da zero.
+  Un backup GitHub non valido non viene mai applicato (`ghRead` restituisce `bad: true`).
+- **Backup**: `snapshot()` e `applyData()` includono anche `learn` e `names` (un vecchio backup senza questi campi li lascia invariati).
+- **Attributi HTML**: gli id nei `data-*` e `value` passano da `esc()`. Quando aggiungi un nuovo attributo con un id o un testo
+  dei dati, usa sempre `esc()`.
+- **CSP** in `<meta>` con gli **hash SHA-256 dei due script inline** (niente `unsafe-inline` per gli script: un handler o uno
+  script iniettato non parte). `connect-src` solo `'self'`, api.anthropic.com e api.github.com (+ `data:`/`blob:` per le immagini incollate).
+  **Dopo ogni modifica a `index.html` esegui `python3 build.py`**: aggiorna `BUILD`, `version.json` e gli hash della CSP
+  (sostituisce la regola "aggiorna BUILD e version.json a mano"). Non usare attributi `onclick=`/`onerror=` né script esterni.
+- **Ancora aperto**: le chiavi (`spese.ai`, `spese.gh`) stanno nel localStorage, condiviso da tutte le pagine sotto lo stesso
+  `utente.github.io`. Per isolarlo serve un dominio o sottodominio dedicato.
 
 ## Come lavorare
 

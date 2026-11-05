@@ -2,6 +2,7 @@
 <html lang="it">
 <head>
 <meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'sha256-3UEUDENHO6bHS6ebfgbekUnwEzdpNgCbqj74L46qTRQ=' 'sha256-dScR8hwIUEnD1QULAiPPgnOKoFfmACsRrkCkq1C+JPw='; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data: blob:; connect-src 'self' https://api.anthropic.com https://api.github.com data: blob:; manifest-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
 <title>Spese</title>
 <meta name="apple-mobile-web-app-capable" content="yes">
@@ -702,7 +703,7 @@ html:root[data-theme]{--c1:#3498db;--c2:#e67e22;--c3:#1abc9c;--c4:#f1c40f;--c5:#
 const $ = (s, r = document) => r.querySelector(s);
 const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 const KEY = "spese.data";
-const BUILD = "20261105111759";
+const BUILD = "20261105115530";
 /* icone delle categorie (24×24, tratto) */
 const ICONS = {
   casa: '<path d="M4 10.5 12 4l8 6.5V19a1 1 0 0 1-1 1h-4.5v-5.5h-5V20H5a1 1 0 0 1-1-1z"/>',
@@ -770,6 +771,69 @@ const DEF_IN = [["stip", "Stipendio", 5, []], ["entrate", "Altre entrate", -1, [
 const mkCat = type => ([id, name, color, subs, fb]) => ({ id, name, color, icon: DEF_ICON[id] || null, type, budget: null, fallback: !!fb, subs: subs.map((n, i) => ({ id: `${id}.${i}`, name: n })) });
 const DEFAULT_CATS = DEF_OUT.map(mkCat("out")).concat(DEF_IN.map(mkCat("in")));
 
+/* ---------- validazione: ogni dato che entra (file di backup, GitHub, dati già salvati) passa da qui ---------- */
+const ID_OK = /^[a-z0-9_.-]{1,64}$/, PC_OK = /^[a-z0-9_-]{1,30}$/, BAD_KEY = /^(__proto__|constructor|prototype)$/;
+function sanitize(d){
+  const isObj = o => !!o && typeof o === "object" && !Array.isArray(o);
+  if (!isObj(d) || !Array.isArray(d.cats) || !Array.isArray(d.tx)) return null;
+  const str = (x, n) => typeof x === "string" ? x.slice(0, n) : "";
+  const int = (n, lim) => Number.isInteger(n) && Math.abs(n) < lim ? n : null;
+  const mk = () => "x" + Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
+  const take = (id, used) => { let k = typeof id === "string" && ID_OK.test(id) && !used.has(id) ? id : mk(); while (used.has(k)) k = mk(); used.add(k); return k; };
+  const cats = [], catMap = new Map(), subMaps = new Map(), usedC = new Set();
+  for (const c of d.cats){
+    if (!isObj(c)) continue;
+    const id = take(c.id, usedC); if (typeof c.id === "string" && !catMap.has(c.id)) catMap.set(c.id, id);
+    const usedS = new Set(), subMap = new Map(), subs = [];
+    for (const x of Array.isArray(c.subs) ? c.subs : []){
+      if (!isObj(x)) continue;
+      const sid = take(x.id, usedS); if (typeof x.id === "string" && !subMap.has(x.id)) subMap.set(x.id, sid);
+      subs.push({ id: sid, name: str(x.name, 60) || "Senza nome" });
+    }
+    subMaps.set(id, subMap);
+    const o = { id, name: str(c.name, 60) || "Senza nome", type: c.type === "in" ? "in" : "out",
+      color: Number.isInteger(c.color) && c.color >= -1 && c.color <= 7 ? c.color : typeof c.color === "string" && /^#[0-9a-f]{6}$/i.test(c.color) ? c.color : -1,
+      budget: (int(c.budget, 1e11) || 0) > 0 ? c.budget : null, fallback: c.fallback === true, subs };
+    if (c.icon !== undefined) o.icon = typeof c.icon === "string" && Object.hasOwn(ICONS, c.icon) ? c.icon : null;
+    cats.push(o);
+  }
+  const tx = [], usedT = new Set();
+  for (const t of d.tx){
+    if (!isObj(t) || (t.type !== "in" && t.type !== "out")) continue;
+    const m = typeof t.date === "string" && /^(\d{4})-(\d{2})-(\d{2})$/.exec(t.date);
+    if (!m || +m[2] < 1 || +m[2] > 12 || +m[3] < 1 || +m[3] > new Date(+m[1], +m[2], 0).getDate()) continue;
+    if (!Number.isFinite(t.amt) || Math.abs(t.amt) >= 1e12) continue;
+    const cid = catMap.has(t.cat) ? catMap.get(t.cat) : typeof t.cat === "string" && ID_OK.test(t.cat) ? t.cat : "";
+    const o = { id: take(t.id, usedT), type: t.type, cat: cid, sub: subMaps.get(cid)?.get(t.sub) ?? null, amt: Math.round(t.amt), date: t.date, note: str(t.note, 500), ts: Number.isFinite(t.ts) ? t.ts : 0 };
+    if (Array.isArray(t.items)){
+      o.items = t.items.filter(isObj).map(x => {
+        const p = int(x.p, 1e10); if (p === null) return null;
+        const it = { n: str(x.n, 120), r: str(x.r, 200), p, c: typeof x.c === "string" && PC_OK.test(x.c) ? x.c : "" };
+        const sc = int(x.sc, 1e10); if (sc !== null) it.sc = sc;
+        if (typeof x.ok === "boolean") it.ok = x.ok;
+        return it;
+      }).filter(Boolean).slice(0, 500);
+    }
+    const sc = int(t.sc, 1e10); if (sc !== null && sc >= 0) o.sc = sc;
+    tx.push(o);
+  }
+  const opt = {};
+  if (isObj(d.opt)) for (const [k, v] of Object.entries(d.opt)){
+    if (!/^[A-Za-z0-9_]{1,30}$/.test(k) || BAD_KEY.test(k)) continue;
+    if (typeof v === "boolean" || Number.isFinite(v)) opt[k] = v; else if (typeof v === "string") opt[k] = v.slice(0, 40);
+  }
+  const out = { v: Number.isInteger(d.v) && d.v >= 1 && d.v <= 99 ? d.v : 1, cats, tx, opt, updated: Number.isFinite(d.updated) ? d.updated : 0 };
+  if (isObj(d.learn)){
+    out.learn = {};
+    for (const [k, v] of Object.entries(d.learn).slice(-1500)) if (k.length <= 200 && !BAD_KEY.test(k) && typeof v === "string" && PC_OK.test(v)) out.learn[k] = v;
+  }
+  if (isObj(d.names)){
+    out.names = {};
+    for (const [k, v] of Object.entries(d.names).slice(-3000)) if (k.length <= 200 && !BAD_KEY.test(k) && isObj(v) && typeof v.n === "string") out.names[k] = { n: v.n.slice(0, 120), c: typeof v.c === "string" && PC_OK.test(v.c) ? v.c : "" };
+  }
+  return out;
+}
+
 function fresh(){ return { v: 2, cats: structuredClone(DEFAULT_CATS), tx: [], opt: {} }; }
 /* dalla prima versione (categorie senza sottocategorie): i movimenti passano nelle nuove macrocategorie */
 function migrate(d){
@@ -792,7 +856,10 @@ function migrate(d){
   return { ...d, v: 2, cats };
 }
 let D;
-try { D = JSON.parse(localStorage.getItem(KEY)) || fresh(); } catch { D = fresh(); }
+{ const raw = localStorage.getItem(KEY); let ok = null;
+  try { ok = sanitize(JSON.parse(raw)); } catch {}
+  if (raw && !ok){ try { localStorage.setItem(KEY + ".bad", raw); } catch {} }   // dati illeggibili: ne tengo una copia prima di ripartire da zero
+  D = ok || fresh(); }
 if (!D.cats || !D.tx) D = fresh();
 D.opt ||= {};
 const wasV1 = !(D.v >= 2);
@@ -975,7 +1042,7 @@ function catRows(st, opts = {}){
   const max = st.cats[0].amt;
   return `<div class="panel">${st.cats.map(c => {
     const b = c.cat.budget, over = b && c.amt > b;
-    return `<button class="crow" data-cat="${c.cat.id}">${cbadge(c.cat)}<div class="mid">
+    return `<button class="crow" data-cat="${esc(c.cat.id)}">${cbadge(c.cat)}<div class="mid">
       <div class="nm"><span>${esc(c.cat.name)}</span><span class="num">${eur(c.amt)}</span></div>
       <div class="meta"><span>${c.n} moviment${c.n === 1 ? "o" : "i"}${b ? ` · budget ${eur0(b)}` : ""}</span><span class="num">${pct(c.amt, st.tot)}%</span></div>
       ${b ? `<div class="bar budget${over ? " over" : ""}"><i style="width:${Math.min(100, pct(c.amt, b))}%"></i></div>
@@ -989,7 +1056,7 @@ function txRow(t){
   const c = cat(t.cat), s = sub(t);
   const title = t.note || (s ? s.name : c.name);
   const line = [t.note ? catLabel(t) : s ? c.name : "", dShort(t.date), t.items?.length ? "🧾 " + t.items.length : ""].filter(Boolean).join(" · ");
-  return `<div class="swipe"><button class="sdel" data-del="${t.id}" tabindex="-1"><svg viewBox="0 0 24 24"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 12a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2l1-12M9 7V4h6v3"/></svg>Elimina</button><button class="tx" data-tx="${t.id}">${cbadge(c, "lg")}
+  return `<div class="swipe"><button class="sdel" data-del="${esc(t.id)}" tabindex="-1"><svg viewBox="0 0 24 24"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 12a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2l1-12M9 7V4h6v3"/></svg>Elimina</button><button class="tx" data-tx="${esc(t.id)}">${cbadge(c, "lg")}
     <div class="mid"><div class="t">${esc(title)}</div><div class="s">${esc(line)}</div></div>
     <span class="a num${t.type === "in" ? " in" : ""}">${t.type === "in" ? "+" : "−"}${eur(t.amt)}</span></button></div>`;
 }
@@ -1009,7 +1076,7 @@ function statsCard(st){
   const prevV = run(pout, Math.min(dm, pdm));
   const days = new Set(st.out.map(t => t.date));
   const pills = Array.from({ length: dm }, (_, i) => { const d = `${m}-${pad(i + 1)}`, wd = GIORNI[pdate(d).getDay()].slice(0, 3);
-    return `<button class="dpill${d === (S.day || td) ? " on" : ""}${days.has(d) ? " has" : ""}${d > td ? " future" : ""}" data-goday="${d}" aria-label="${esc(dLabel(d))}"><b>${pad(i + 1)}</b><small>${wd}</small><i></i></button>`; }).join("");
+    return `<button class="dpill${d === (S.day || td) ? " on" : ""}${days.has(d) ? " has" : ""}${d > td ? " future" : ""}" data-goday="${esc(d)}" aria-label="${esc(dLabel(d))}"><b>${pad(i + 1)}</b><small>${wd}</small><i></i></button>`; }).join("");
   const labels = Array.from({ length: dm }, (_, i) => (i + 1) % 5 === 0 || i === 0 ? String(i + 1) : "");
   return `<div class="card2" style="margin-top:8px"><div class="shead"><h2>Spesa accumulata</h2><span class="help">tocca il grafico</span></div>
     ${area("chHome", curV, prevV, labels, { h: 150, label: "Spesa accumulata nel mese, confrontata con il mese prima", tip: i => `Fino al ${dShort(`${m}-${pad(i + 1)}`)}`, curLabel: mName(m), prevLabel: `${mName(pm)} allo stesso giorno` })}
@@ -1025,7 +1092,7 @@ function catCards(st){
     const top = c.subs.find(x => x.sub);
     const foot = b ? (over ? `<div class="foot warn">! oltre il budget di ${eur0(c.amt - b)}</div>` : `<div class="foot">${pct(c.amt, b)}% del budget · restano ${eur0(b - c.amt)}</div>`)
       : `<div class="foot">${top ? esc(top.name) + " " + eur0(top.amt) : movs(c.n)}</div>`;
-    return `<button class="ccard" data-cat="${c.cat.id}"><div class="top">${cbadge(c.cat, "sm")}<div><b>${esc(c.cat.name)}</b><small>${movs(c.n)}</small></div></div>
+    return `<button class="ccard" data-cat="${esc(c.cat.id)}"><div class="top">${cbadge(c.cat, "sm")}<div><b>${esc(c.cat.name)}</b><small>${movs(c.n)}</small></div></div>
       <div class="amt"><b>${eur(c.amt)}</b><span>${share}%</span></div>
       <div class="dots20" aria-hidden="true">${Array.from({ length: 20 }, (_, k) => `<i${k < fill ? ` style="background:${col}"` : ""}></i>`).join("")}</div>${foot}</button>`;
   }).join("")}</div>`;
@@ -1036,7 +1103,7 @@ function topCard(st){
   let banner = "";
   const pm = addMonth(thisMonth(), -1);
   if (D.opt.seenReport !== pm && txIn(pm).length)
-    banner = `<button class="banner" data-act="openReport" data-m="${pm}"><svg viewBox="0 0 24 24"><path d="M4 20h16"/><path d="M7 16v-5M12 16V6M17 16v-8"/></svg>
+    banner = `<button class="banner" data-act="openReport" data-m="${esc(pm)}"><svg viewBox="0 0 24 24"><path d="M4 20h16"/><path d="M7 16v-5M12 16V6M17 16v-8"/></svg>
       <div><b>Il report di ${mName(pm)} è pronto</b><small>Dove hai speso, cosa è cambiato, cosa tenere d'occhio</small></div>${ICON_CHEV.replace("chev", "chev\" style=\"stroke:currentColor")}</button>`;
   if (GH.repo && GH.err && (!GH.last || Date.now() - GH.last > 864e5))
     banner = `<button class="banner warn" data-act="settings"><svg viewBox="0 0 24 24"><path d="M12 9v4M12 17h.01"/><path d="M10.3 3.9 2.4 18a2 2 0 0 0 1.7 3h15.8a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/></svg>
@@ -1071,7 +1138,7 @@ function calendar(list){
     const amt = tot ? `<span class="amt${tot > avg * 1.5 && outDays.length > 2 ? " hi" : ""}">${short(tot)}</span>` : inc ? `<span class="amt in">+${short(inc)}</span>` : "";
     const cls = ["cd", date === td ? "today" : "", txs.length ? "" : "none", date > td ? "future" : ""].filter(Boolean).join(" ");
     const lab = `${dLabel(date)}: ${tot ? "spesi " + eur(tot) + " in " + cats.map(c => c.cat.name).join(", ") : "nessuna spesa"}`;
-    cells += `<button class="${cls}" data-day="${date}" aria-pressed="${S.day === date}" aria-label="${esc(lab)}"><span class="n">${d}</span><span class="dots">${dots}</span>${amt}</button>`;
+    cells += `<button class="${cls}" data-day="${esc(date)}" aria-pressed="${S.day === date}" aria-label="${esc(lab)}"><span class="n">${d}</span><span class="dots">${dots}</span>${amt}</button>`;
   }
   const used = byCat(list.filter(t => t.type === "out")).map(c => c.cat);
   const legend = used.length ? `<div class="legend">${used.map(c => `<span><i style="background:${cvar(c.color)}"></i>${esc(c.name)}</span>`).join("")}</div>` : "";
@@ -1080,7 +1147,7 @@ function calendar(list){
     const txs = (byDay[S.day] || []).sort((a, b) => b.ts - a.ts), tot = sum(txs.filter(t => t.type === "out"));
     detail = `<div class="dayhead"><b>${dLabel(S.day)}</b><span class="num">${tot ? "−" + eur(tot) : txs.length ? "" : "nessuna spesa"}</span></div>
       ${txs.map(txRow).join("")}
-      <div class="row-btns" style="margin-top:10px"><button class="btn ghost" data-act="addOn" data-day="${S.day}">+ Aggiungi in questo giorno</button></div>`;
+      <div class="row-btns" style="margin-top:10px"><button class="btn ghost" data-act="addOn" data-day="${esc(S.day)}">+ Aggiungi in questo giorno</button></div>`;
   } else detail = `<p class="help" style="padding:14px 16px 0;text-align:center">Tocca un giorno per vedere cosa hai speso.</p>`;
   return `<div class="cal"><div class="wd">${["lun", "mar", "mer", "gio", "ven", "sab", "dom"].map(x => `<span>${x}</span>`).join("")}</div><div class="grid">${cells}</div></div>${legend}${detail}`;
 }
@@ -1099,7 +1166,7 @@ function renderTx(){
     if (q && !(`${t.note} ${catLabel(t)} ${fmtInput(t.amt)}`.toLowerCase().includes(q))) return false;
     return true;
   }).sort((a, b) => b.date.localeCompare(a.date) || b.ts - a.ts);
-  const chip = (k, label, c) => `<button class="chip" data-filter="${k}" aria-pressed="${S.filter === k}">${c ? cmark(c) : ""}${esc(label)}</button>`;
+  const chip = (k, label, c) => `<button class="chip" data-filter="${esc(k)}" aria-pressed="${S.filter === k}">${c ? cmark(c) : ""}${esc(label)}</button>`;
   if (S.day && !S.day.startsWith(S.month)) S.day = null;
   if (!S.day && S.month === thisMonth()) S.day = today();
   let html = top.banner + top.hero + `<div class="seg viewseg"><button data-view="list" aria-pressed="${S.view === "list"}">Lista</button><button data-view="cal" aria-pressed="${S.view === "cal"}">Calendario</button></div>
@@ -1179,7 +1246,7 @@ function renderReport(){
     ${st.cats.length ? `<div class="shead"><h2>Dove hai speso</h2><span class="help">tocca per il dettaglio</span></div>
     <div class="panel">${donut(foldRows(st.cats, st.tot), st.tot)}${st.cats.map(c => {
       const p = prevCats.get(c.cat.id) || 0, dt = prevRef ? dTag(c.amt - p, p) : "";
-      return `<button class="crow" data-cat="${c.cat.id}">${cbadge(c.cat)}<div class="mid">
+      return `<button class="crow" data-cat="${esc(c.cat.id)}">${cbadge(c.cat)}<div class="mid">
         <div class="nm"><span>${esc(c.cat.name)}</span><span class="num">${eur(c.amt)}</span></div>
         <div class="meta"><span>${pct(c.amt, st.tot)}% · ${movs(c.n)}</span><span class="num">${dt}</span></div>
         <div class="bar"><i style="width:${Math.max(2, c.amt / st.cats[0].amt * 100)}%;background:${cvar(c.cat.color)}"></i></div></div>${ICON_CHEV}</button>`;
@@ -1276,7 +1343,7 @@ function renderProd(){
       <div class="panel"><div class="stack" style="margin:14px 14px 4px">${st.cats.map(x => `<i style="flex:${x.amt};background:${pcat(x.c).col}"></i>`).join("")}</div>
       ${st.cats.map(x => { const pc = pcat(x.c), pv = pmap.get(x.c) || 0, np = st.prods.filter(p => p.c === x.c).length;
         const dt = pst.tot ? dTag(x.amt - pv, pv) : "";
-        return `<button class="prow" data-pccat="${x.c}"><span class="em">${pc.e}</span><div class="mid"><div class="t">${esc(pc.n)}</div><div class="s">${np} ${np === 1 ? "prodotto" : "prodotti"} · ${pct(x.amt, st.tot)}%${dt ? " · " + dt : ""}</div>
+        return `<button class="prow" data-pccat="${esc(x.c)}"><span class="em">${pc.e}</span><div class="mid"><div class="t">${esc(pc.n)}</div><div class="s">${np} ${np === 1 ? "prodotto" : "prodotti"} · ${pct(x.amt, st.tot)}%${dt ? " · " + dt : ""}</div>
           <div class="bar"><i style="width:${Math.max(2, x.amt / max * 100)}%;background:${pc.col}"></i></div></div><div class="a">${eur(x.amt)}</div>${ICON_CHEV}</button>`; }).join("")}</div>` : ""}
       ${saveCard(rtx, prtx, n)}
       ${tops.length ? `<div class="shead"><h2>I prodotti</h2><span class="help">tocca un prodotto</span></div>
@@ -1325,7 +1392,7 @@ function drawProd(){
   const vals = months.map(m => { const t = list.filter(x => x.date.startsWith(m)).reduce((s, x) => s + x.p, 0); return { v: t, lab: mShort(m), tip: mLabel(m), top: t ? eur0(t) : "", color: pc.col }; });
   $("#sProd").innerHTML = `<div class="pbar"><button class="icon-btn" data-act="prodBack" aria-label="Chiudi">${ICON_X}</button><h3>${esc(name)}</h3></div>
     <div class="sumhead"><span class="cb lg" style="background:var(--raised);font-size:24px">${pc.e}</span><div><small>${list.length} ${list.length === 1 ? "acquisto" : "acquisti"}</small><b>${eur(ps.reduce((a, b) => a + b, 0))}</b>
-      <button class="pcbtn" data-act="prodPc" data-c="${pc.id}">${pc.e} ${esc(pc.n)} · Cambia categoria</button></div></div>
+      <button class="pcbtn" data-act="prodPc" data-c="${esc(pc.id)}">${pc.e} ${esc(pc.n)} · Cambia categoria</button></div></div>
     <div class="sumfacts"><span>prezzo medio <b>${eur(avg)}</b></span><span>min <b>${eur(Math.min(...ps))}</b></span><span>max <b>${eur(Math.max(...ps))}</b></span>
       ${list.length > 1 && Math.abs(ch) >= 3 ? `<span>dalla prima volta <b>${ch > 0 ? "▲ +" : "▼ −"}${Math.abs(ch)}%</b></span>` : ""}</div>
     <div class="section"><div class="shead"><h2>Spesa negli ultimi 6 mesi</h2></div><div class="panel">${bars("chProd", vals, { h: 130, maxW: 34, label: "Spesa per questo prodotto" })}</div>
@@ -1379,7 +1446,7 @@ function renderYear(){
     <div class="panel">${st.cats.map(c => {
       const arr = perCat.get(c.cat.id), mx = Math.max(1, ...arr), p = prevMap.get(c.cat.id) || 0, d = c.amt - p;
       const dtxt = !pst.tot || cur ? "" : !p ? "nuova" : `${d >= 0 ? "▲ +" : "▼ −"}${eur0(Math.abs(d))} vs ${PY}`;
-      return `<button class="crow" data-cat="${c.cat.id}">${cbadge(c.cat)}<div class="mid">
+      return `<button class="crow" data-cat="${esc(c.cat.id)}">${cbadge(c.cat)}<div class="mid">
         <div class="nm"><span>${esc(c.cat.name)}</span><span class="num">${eur(c.amt)}</span></div>
         <div class="meta"><span>${pct(c.amt, st.tot)}% · ${eur0(c.amt / span)} al mese</span><span class="num">${dtxt}</span></div>
         <div class="spark" aria-label="Andamento mensile di ${esc(c.cat.name)}">${arr.map((x, i) => `<i class="${x ? "" : "z"}" title="${mName(months[i])}: ${eur(x)}" style="height:${x ? Math.max(8, x / mx * 100) : 0}%;background:${cvar(c.cat.color)}${i > lastIdx ? ";opacity:.3" : ""}"></i>`).join("")}</div>
@@ -1388,7 +1455,7 @@ function renderYear(){
 
     <div class="shead"><h2>Tabella dei mesi</h2><span class="help">tocca un mese</span></div>
     <div class="panel"><table class="mtab"><thead><tr><th>Mese</th><th>Spese</th><th>Entrate</th><th>Saldo</th></tr></thead><tbody>
-      ${ms.map((x, i) => { const sd = x.inc - x.out, empty = !x.out && !x.inc; return `<tr${empty ? ' class="off"' : ` data-mrep="${x.m}"`}><td>${mName(x.m)}</td><td>${x.out ? eur0(x.out) : "–"}</td><td>${x.inc ? eur0(x.inc) : "–"}</td><td class="${empty ? "" : sd >= 0 ? "pos" : "neg"}">${empty ? "–" : (sd >= 0 ? "+" : "−") + eur0(Math.abs(sd))}</td></tr>`; }).join("")}
+      ${ms.map((x, i) => { const sd = x.inc - x.out, empty = !x.out && !x.inc; return `<tr${empty ? ' class="off"' : ` data-mrep="${esc(x.m)}"`}><td>${mName(x.m)}</td><td>${x.out ? eur0(x.out) : "–"}</td><td>${x.inc ? eur0(x.inc) : "–"}</td><td class="${empty ? "" : sd >= 0 ? "pos" : "neg"}">${empty ? "–" : (sd >= 0 ? "+" : "−") + eur0(Math.abs(sd))}</td></tr>`; }).join("")}
     </tbody><tfoot><tr><td>Totale</td><td>${eur0(st.tot)}</td><td>${eur0(st.income)}</td><td class="${saved >= 0 ? "pos" : "neg"}">${(saved >= 0 ? "+" : "−") + eur0(Math.abs(saved))}</td></tr></tfoot></table></div>
 
     <div class="row-btns noprint"><button class="btn ghost" data-act="print">Salva in PDF</button><button class="btn ghost" data-act="csvYear">Esporta CSV</button></div>
@@ -1402,7 +1469,7 @@ function renderCats(){
     const a = (type === "out" ? st.cats : inc).find(x => x.cat.id === c.id)?.amt || 0;
     const info = [`${mName(S.month)}: ${eur(a)}`]; if (c.budget) info.push(`budget ${eur0(c.budget)}`);
     const subs = c.subs.length ? c.subs.map(x => esc(x.name)).join(", ") : "nessuna sottocategoria";
-    return `<button class="list-item" data-cat="${c.id}">${cbadge(c)}<span>${esc(c.name)}<small class="clamp">${subs}</small><small>${info.join(" · ")}</small></span>${ICON_CHEV}</button>`;
+    return `<button class="list-item" data-cat="${esc(c.id)}">${cbadge(c)}<span>${esc(c.name)}<small class="clamp">${subs}</small><small>${info.join(" · ")}</small></span>${ICON_CHEV}</button>`;
   }).join("");
   v.innerHTML = `<div class="section">
     <div class="shead"><h2>Categorie di spesa</h2><button data-act="newCat" data-type="out">+ Nuova</button></div>
@@ -1432,12 +1499,12 @@ function drawTx(){
     <h3>${e.id ? "Modifica movimento" : e.type === "out" ? "Nuova spesa" : "Nuova entrata"}</h3><button class="btn" data-act="saveTx">Salva</button></div>
     <div class="seg"><button data-type="out" aria-pressed="${e.type === "out"}">Spesa</button><button data-type="in" aria-pressed="${e.type === "in"}">Entrata</button></div>
     <button class="amount" data-act="kp" aria-label="Importo"><span id="amt"></span><i class="caret"${S.kp ? "" : " hidden"}></i><span class="cur">€</span></button>
-    <div class="field"><label>Categoria</label><div class="catgrid">${cats.map(c => `<button class="chip" data-pick="${c.id}" aria-pressed="${c.id === e.cat}">${cmark(c)}${esc(c.name)}</button>`).join("")}
-      <button class="chip" data-act="newCat" data-type="${e.type}">+ Nuova</button></div></div>
+    <div class="field"><label>Categoria</label><div class="catgrid">${cats.map(c => `<button class="chip" data-pick="${esc(c.id)}" aria-pressed="${c.id === e.cat}">${cmark(c)}${esc(c.name)}</button>`).join("")}
+      <button class="chip" data-act="newCat" data-type="${esc(e.type)}">+ Nuova</button></div></div>
     ${e.cat ? `<div class="field"><label>Sottocategoria di ${esc(mc.name)}</label><div class="catgrid subs">
-      <button class="chip" data-psub="" aria-pressed="${!e.sub}">Nessuna</button>${subs.map(x => `<button class="chip" data-psub="${x.id}" aria-pressed="${x.id === e.sub}">${esc(x.name)}</button>`).join("")}
+      <button class="chip" data-psub="" aria-pressed="${!e.sub}">Nessuna</button>${subs.map(x => `<button class="chip" data-psub="${esc(x.id)}" aria-pressed="${x.id === e.sub}">${esc(x.name)}</button>`).join("")}
       <button class="chip" data-act="newSubTx">+ Nuova</button></div></div>` : ""}
-    <div class="field"><label for="txDate">Data</label><input type="date" id="txDate" value="${e.date}"></div>
+    <div class="field"><label for="txDate">Data</label><input type="date" id="txDate" value="${esc(e.date)}"></div>
     <div class="field"><label for="txNote">Nota</label><input type="text" id="txNote" placeholder="${e.type === "out" ? "es. Esselunga, cena con amici" : "es. stipendio di ottobre"}" value="${esc(e.note)}" autocomplete="off"></div>
     ${e.type === "out" ? `<div class="field"><label>Scontrino <small class="opt">facoltativo</small></label>${itemsBlock(e)}</div>
     ${e.items?.length || e.sc ? `<div class="field"><label for="txSc">Sconti sullo scontrino</label><input type="text" id="txSc" inputmode="decimal" placeholder="0,00" value="${e.sc ? fmtInput(e.sc) : ""}" autocomplete="off">
@@ -1563,7 +1630,7 @@ function drawSum(){
   const vals = months.map(m => { const t = sum(txIn(m).filter(x => x.cat === c.id)); return { v: t, lab: mShort(m), tip: mLabel(m), top: t ? eur0(t) : "", color: m === S.month ? cvar(c.color) : `color-mix(in srgb,${cvar(c.color)} 45%,transparent)` }; });
   const big = tx.length ? tx.reduce((a, x) => x.amt > a.amt ? x : a) : null;
   $("#sSum").innerHTML = `<div class="pbar"><button class="icon-btn" data-act="close" aria-label="Chiudi">${ICON_X}</button><h3>${esc(c.name)}</h3>
-      <button class="icon-btn" data-act="editCat" data-id="${c.id}" aria-label="Modifica categoria"><svg viewBox="0 0 24 24"><path d="M4 20h4L19 9a2.8 2.8 0 0 0-4-4L4 16z"/><path d="m13.5 6.5 4 4"/></svg></button></div>
+      <button class="icon-btn" data-act="editCat" data-id="${esc(c.id)}" aria-label="Modifica categoria"><svg viewBox="0 0 24 24"><path d="M4 20h4L19 9a2.8 2.8 0 0 0-4-4L4 16z"/><path d="m13.5 6.5 4 4"/></svg></button></div>
     <div class="sumhead">${cbadge(c, "lg")}<div><small>${word} di ${mLabel(S.month)}</small><b>${eur(tot)}</b></div></div>
     <div class="sumfacts"><span><b>${all ? pct(tot, all) : 0}%</b> delle ${word.toLowerCase()} del mese</span><span>${movs(tx.length)}</span>${tx.length ? `<span>media <b>${eur(tot / tx.length)}</b></span>` : ""}${delta}${big ? `<span>la più alta <b>${eur(big.amt)}</b></span>` : ""}</div>
     ${budget}
@@ -1727,13 +1794,16 @@ function csv(list){
   return "﻿Data;Tipo;Categoria;Sottocategoria;Importo;Nota\n" + [...list].sort((a, b) => a.date.localeCompare(b.date))
     .map(t => [t.date, t.type === "out" ? "Spesa" : "Entrata", q(cat(t.cat).name), q(sub(t)?.name || ""), fmtInput(t.type === "out" ? -t.amt : t.amt), q(t.note || "")].join(";")).join("\n");
 }
-function applyData(d){ D = migrate({ v: d.v || 1, cats: d.cats, tx: d.tx, opt: { ...(d.opt || {}), theme: D.opt.theme } }); save(); }
+function applyData(d){
+  const c = sanitize(d); if (!c) throw new Error("backup non valido");
+  D = migrate({ v: c.v, cats: c.cats, tx: c.tx, opt: { ...c.opt, theme: D.opt.theme }, learn: c.learn || D.learn || {}, names: c.names || D.names || {} }); save();
+}
 function restore(file){
   const r = new FileReader();
   r.onload = () => {
     try {
-      const d = JSON.parse(r.result);
-      if (!Array.isArray(d.cats) || !Array.isArray(d.tx)) throw 0;
+      const d = sanitize(JSON.parse(r.result));
+      if (!d) throw 0;
       if (!confirm(`Ripristinare ${d.tx.length} movimenti e ${d.cats.length} categorie? I dati attuali verranno sostituiti.`)) return;
       applyData(d); close(); render(); toast("Backup ripristinato");
     } catch { toast("Questo file non è un backup valido"); }
@@ -2069,13 +2139,13 @@ function itemsBlock(e){
 function openPcPick(i){
   closePcPick(); const cur = S.edit.items[i]?.c;
   const w = document.createElement("div"); w.id = "pcWrap";
-  w.innerHTML = `<div class="pcscrim" data-act="pcClose"></div><div class="pcpick" role="dialog" aria-label="Categoria del prodotto">${PCATS.map(x => `<button data-setpc="${x.id}" data-i="${i}" aria-pressed="${x.id === cur}"><span>${x.e}</span>${esc(x.n)}</button>`).join("")}</div>`;
+  w.innerHTML = `<div class="pcscrim" data-act="pcClose"></div><div class="pcpick" role="dialog" aria-label="Categoria del prodotto">${PCATS.map(x => `<button data-setpc="${esc(x.id)}" data-i="${i}" aria-pressed="${x.id === cur}"><span>${x.e}</span>${esc(x.n)}</button>`).join("")}</div>`;
   document.body.appendChild(w);
 }
 function closePcPick(){ $("#pcWrap")?.remove(); }
 function openPcPickFor(cur){
   closePcPick(); const w = document.createElement("div"); w.id = "pcWrap";
-  w.innerHTML = `<div class="pcscrim" data-act="pcClose"></div><div class="pcpick" role="dialog" aria-label="Categoria del prodotto">${PCATS.map(x => `<button data-setpc="${x.id}" aria-pressed="${x.id === cur}"><span>${x.e}</span>${esc(x.n)}</button>`).join("")}</div>`;
+  w.innerHTML = `<div class="pcscrim" data-act="pcClose"></div><div class="pcpick" role="dialog" aria-label="Categoria del prodotto">${PCATS.map(x => `<button data-setpc="${esc(x.id)}" aria-pressed="${x.id === cur}"><span>${x.e}</span>${esc(x.n)}</button>`).join("")}</div>`;
   document.body.appendChild(w);
 }
 /* quando salvi, l'app ricorda le categorie che hai confermato o corretto */
@@ -2195,7 +2265,7 @@ function drawAsk(){
       <div class="askp">pagato <b>${eur(it.p)}</b></div></div>
     <div class="field"><label for="askName">Cos'è?</label><input type="text" id="askName" value="${it.ask ? "" : esc(it.n)}" placeholder="es. ${esc(it.guess)}" autocomplete="off" enterkeyhint="next">
       <div class="asksug"><button class="g" data-asksug="${esc(it.guess)}">💡 ${esc(it.guess)}</button>${sug.map(x => `<button data-asksug="${esc(x)}">${esc(x)}</button>`).join("")}</div></div>
-    <div class="field"><label>Categoria</label><div class="askpcs">${PCATS.map(x => `<button data-askpc="${x.id}" aria-pressed="${x.id === pc}"><span>${x.e}</span>${esc(x.n)}</button>`).join("")}</div></div>
+    <div class="field"><label>Categoria</label><div class="askpcs">${PCATS.map(x => `<button data-askpc="${esc(x.id)}" aria-pressed="${x.id === pc}"><span>${x.e}</span>${esc(x.n)}</button>`).join("")}</div></div>
     <div class="asknav">${A.i ? `<button class="btn ghost" data-act="askBack" style="flex:.7">Indietro</button>` : ""}<button class="btn ghost" data-act="askSkip" style="flex:.7">Salta</button><button class="btn" data-act="askNext">${A.i === n - 1 ? "Fine" : "Avanti"}</button></div>`;
   el.scrollTop = 0;
 }
@@ -2250,7 +2320,7 @@ function openMan(){
         <label for="manName">Prodotto</label><input type="text" id="manName" placeholder="es. Latte parzialmente scremato" autocomplete="off" autocapitalize="sentences" enterkeyhint="next">
         <div class="asksug" id="manSug"></div>
         <label for="manPrice">Prezzo pagato</label><input type="text" id="manPrice" inputmode="decimal" placeholder="0,00" autocomplete="off" enterkeyhint="done">
-        <label>Categoria</label><div class="askpcs">${PCATS.map(x => `<button data-manpc="${x.id}" aria-pressed="false"><span>${x.e}</span>${esc(x.n)}</button>`).join("")}</div>
+        <label>Categoria</label><div class="askpcs">${PCATS.map(x => `<button data-manpc="${esc(x.id)}" aria-pressed="false"><span>${x.e}</span>${esc(x.n)}</button>`).join("")}</div>
         <button class="btn wide" data-act="manAdd" style="margin-top:16px">Aggiungi</button>
       </div>
       <div id="manList"></div>
@@ -2308,6 +2378,7 @@ document.addEventListener("change", e => {
    Il token resta solo su questo telefono e non finisce mai nel backup. */
 const GHK = "spese.gh", GH_FILE = "spese.json";
 var GH = {}; try { GH = JSON.parse(localStorage.getItem(GHK)) || {}; } catch {}
+if (GH.repo && !/^[\w.-]+\/[\w.-]+$/.test(GH.repo)) GH = {};
 const ghSave = () => { try { localStorage.setItem(GHK, JSON.stringify(GH)); } catch {} };
 var ghReady = false, ghBusy = false, ghAgain = false, ghTimer = null;
 const b64e = str => { const b = new TextEncoder().encode(str); let x = ""; for (let i = 0; i < b.length; i += 0x8000) x += String.fromCharCode(...b.subarray(i, i + 0x8000)); return btoa(x); };
@@ -2333,9 +2404,11 @@ async function ghRead(){
   const j = await r.json();
   let text = j.content ? b64d(j.content) : "";
   if (!text){ const rr = await ghFetch("/contents/" + GH_FILE + "?t=" + Date.now(), { raw: true }); if (!rr.ok) throw rr; text = await rr.text(); }
-  return { sha: j.sha, data: JSON.parse(text) };
+  let raw = null; try { raw = JSON.parse(text); } catch {}
+  const data = sanitize(raw);   // un backup manomesso o rovinato non entra mai così com'è
+  return { sha: j.sha, data: data || sanitize({ cats: [], tx: [] }), bad: !data };
 }
-const snapshot = () => ({ app: "Spese", v: D.v, updated: D.updated || Date.now(), cats: D.cats, tx: D.tx, opt: { ...D.opt, theme: undefined } });
+const snapshot = () => ({ app: "Spese", v: D.v, updated: D.updated || Date.now(), cats: D.cats, tx: D.tx, learn: D.learn || {}, names: D.names || {}, opt: { ...D.opt, theme: undefined } });
 async function backupNow(manual){
   if (!GH.repo || !GH.token) return;
   if (ghBusy){ ghAgain = true; return; }
@@ -2435,6 +2508,7 @@ async function ghRestore(){
   try {
     const rem = await ghRead();
     if (!rem){ toast("Nel repository non c'è ancora nessun backup"); return; }
+    if (rem.bad){ toast("Il backup su GitHub non è valido"); return; }
     const when = new Date(rem.data.updated || 0).toLocaleString("it-IT", { day: "numeric", month: "long", hour: "2-digit", minute: "2-digit" });
     if (!confirm(`Ripristinare il backup del ${when} (${movs(rem.data.tx.length)})? I dati di questo telefono verranno sostituiti.`)) return;
     GH.sha = rem.sha; applyData(rem.data); GH.synced = D.updated; ghSave(); render(); ghPaint(); toast("Backup ripristinato");
@@ -2664,7 +2738,7 @@ async function checkUpdate(){
     const r = await fetch("version.json?t=" + Date.now(), { cache: "no-store" });
     const { v } = await r.json();
     const slot = v + ":" + Math.floor(Date.now() / 300000);
-    if (v && v !== BUILD && sessionStorage.getItem("spese.upd") !== slot){
+    if (/^\d{14}$/.test(v) && v !== BUILD && sessionStorage.getItem("spese.upd") !== slot){
       sessionStorage.setItem("spese.upd", slot);   // al massimo un tentativo ogni 5 minuti
       await fetch(location.pathname, { cache: "reload" }).catch(() => {});
       location.replace(location.pathname + "?v=" + v);
