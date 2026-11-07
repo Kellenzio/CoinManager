@@ -14,7 +14,7 @@ Pubblicata su GitHub Pages, installata dalla schermata Home di Safari (modalità
 
 ## Struttura del codice
 
-- **Dati**: `localStorage["spese.data"]` → `D = { v, cats, tx, opt, learn, names, updated }`.
+- **Dati**: `localStorage["spese.data"]` → `D = { v, cats, tx, opt, inv, learn, names, updated }` (versione dati `v` = 3).
   - `cats[]`: `{ id, name, color (0–7 = palette del tema, oppure "#hex"), icon, type: "out"|"in", budget (centesimi), fallback, subs: [{ id, name }] }`
   - `tx[]`: `{ id, type, cat, sub, amt (centesimi), date "YYYY-MM-DD", note, ts, items?, sc? }`
     - `items[]` (prodotti dello scontrino): `{ n nome, r testo grezzo, p prezzo pagato in centesimi, sc, c categoria prodotto }`
@@ -23,7 +23,7 @@ Pubblicata su GitHub Pages, installata dalla schermata Home di Safari (modalità
   - `migrate()` porta i dati vecchi alla versione corrente; `save()` aggiorna `D.updated` e pianifica il backup.
 - **Altre chiavi localStorage**: `spese.theme`, `spese.look`, `spese.ai` (chiave Anthropic), `spese.gh` (token GitHub).
 - **Stato UI**: oggetto `S` (scheda, mese, viste). `render()` ridisegna la scheda attiva:
-  `vTx` Movimenti, `vReport` Report (mese/anno), `vShop` Spesa (prodotti), `vCats` Categorie.
+  `vTx` Movimenti, `vReport` Report (mese/anno), `vShop` Spesa (prodotti), `vInv` Investi (piani di accumulo), `vCats` Categorie.
   I fogli a tutto schermo (`.sheet`) si aprono con `open("#id")` e si chiudono con `close()` (il più in alto).
 - **Click**: un unico listener su `document` che legge i `data-*` dei bottoni e lo `switch (d.act)`.
 - **Temi**: `data-theme` su `<html>` (`oled`, `carta`); **stili del testo**: `data-look` (`morbido` predefinito,
@@ -37,6 +37,50 @@ Pubblicata su GitHub Pages, installata dalla schermata Home di Safari (modalità
 - **Auto-aggiornamento**: costante `BUILD` in `index.html` + `version.json` (`{"v": BUILD}`).
   **Ogni volta che modifichi l'app esegui `python3 build.py`**: scrive lo stesso valore (`AAAAMMGGhhmmss`) in entrambi
   e aggiorna la CSP, altrimenti il telefono non si aggiorna (o l'app non parte).
+
+## Investimenti (scheda «Investi», dal 06/11/2026)
+
+- **Modello**: la categoria di spesa `invest` («Investimenti», icona `grafico`, non eliminabile; `ensureInvest()` la crea o adotta una
+  categoria che si chiama già così). **Ogni piano è una sottocategoria di `invest`**; i versamenti sono normali movimenti
+  (`cat:"invest"`, `sub:idPiano`), quindi compaiono in Movimenti, Report e CSV. I dettagli del piano stanno in
+  `D.inv.plans[idSottocategoria] = { kind: fondo|etf|obbl|altro, amt (centesimi), freq: m|b|q|s|a|l, start "AAAA-MM", auto?, day?, gen?, hist?, val?, vald?, closed }`
+  (`val` = valore attuale scritto dall'utente, per guadagno e rendimento). Un piano senza dettagli ha valori di default.
+- **Codice**: blocco «Investimenti» prima di `openTx` (`invPlans`, `renderInv`, `openPlan/drawPlan/savePlan/delPlan`, `invPay`, `invAdd`).
+  Il foglio `#sPlan` si apre con `open("#sPlan")`. «Versa» apre il foglio del movimento già compilato (importo, categoria, piano).
+  Il pulsante + sulla scheda Investi precompila la categoria Investimenti.
+- **PAC automatici**: un piano con `auto: true` (+ `day` 1–31) viene registrato da `autoPac()` (chiamata all'inizio di `render()` e quando l'app torna in primo
+  piano): per ogni mese previsto, dal primo versamento fino a oggi, crea un movimento `{auto:true, note:"Versamento automatico"}` nel giorno indicato.
+  `plan.gen` = ultimo mese elaborato (un versamento eliminato non torna); non raddoppia ciò che è già stato registrato a mano nello stesso mese.
+  Il versamento iniziale è un movimento con `ini:true`: conta nel totale versato ma non come rata del mese. Frequenze: m, b (2 mesi), q, s (6), a (12), l (a mano).
+- **Cambio importo**: `plan.hist = [{from:"AAAA-MM", amt}]` (la voce di base ha `from:"0000-01"`); `amtAt(piano, mese)` dà l'importo di ogni mese.
+  Il foglio del piano chiede «Se cambi l'importo, vale dal mese»: i movimenti automatici da quel mese in poi si aggiornano, i mesi passati restano invariati.
+
+## Spese a rate (qualsiasi spesa in uscita)
+
+- Nel foglio «Nuova spesa», campo **Pagamento → A rate** (numero di rate 2–60, cadenza mensile/bimestrale/trimestrale/semestrale/annuale; `S.edit.rate`).
+  L'importo scritto è il **totale**: `saveTx()` lo divide con `splitRates()` (l'eventuale resto di centesimi va sull'ultima rata) e crea subito tutti i movimenti,
+  con date calcolate da `shiftDate()` (stesso giorno, o ultimo del mese se più corto), ciascuno con `inst: { g (gruppo), i, n, tot }`. La prima rata è alla data scelta.
+- Le rate future compaiono nei mesi successivi: le frecce del mese arrivano fino all'ultimo mese con movimenti (`lastMonth()`).
+  In Movimenti la riga mostra «rata 2/3». Aprendo una rata si modifica solo quella; «Elimina tutte le rate» (`delRate`) cancella l'intero gruppo.
+  Non disponibile per le spese con scontrino letto dall'IA.
+- **Migrazione**: `migrate()` porta i dati a `v: 3` (aggiunge la categoria e `inv`). `sanitize()` valida anche `inv`
+  (i piani esistono solo se esiste la sottocategoria, ids rimappati come per le categorie).
+- **Versamenti automatici**: `plan.auto` + `plan.day` (giorno del mese). `autoPac()` (chiamata all'inizio di `render()` e al ritorno in primo piano)
+  registra i versamenti dovuti fino a oggi (`tx.auto: true`, nota «Versamento automatico»). `plan.gen` = ultimo mese già elaborato: un versamento
+  eliminato a mano non viene ricreato; se nel mese c'è già un versamento manuale non lo raddoppia (aggiunge solo la differenza). Frequenze: m, b, q, s, a, l (a mano).
+- **Cambio di importo**: `plan.hist = [{from:"AAAA-MM", amt}]`; `amtAt(piano, mese)` dà l'importo valido in quel mese. Dal foglio del piano si sceglie da quale mese vale la nuova cifra:
+  i versamenti automatici da quel mese in poi vengono aggiornati, i mesi passati non si toccano.
+- **Movimenti**: nella card in alto compare «Di cui investiti» (gli investimenti restano nel totale delle uscite: sono soldi che escono dal conto).
+- **Barra in basso**: 5 schede della stessa larghezza; il + è un pulsante tondo fisso in basso a destra sopra la barra (solo sotto i 900 px;
+  su PC resta nella barra laterale). Etichetta «Investi» (corta per i 320 px).
+
+## Spese a rate
+
+- Nel foglio di una **nuova** spesa (non per gli scontrini) c'è «Pagamento: In una volta / A rate». Si sceglie il numero di rate (2–60) e la cadenza
+  (mensile, bimestrale, trimestrale, semestrale, annuale). L'importo scritto è il **totale**: `splitRates()` lo divide (il resto dei centesimi va sull'ultima rata)
+  e `saveTx()` crea subito tutte le rate come normali movimenti, nella stessa categoria/sottocategoria, a partire dalla data scelta (`shiftDate()`: stesso giorno, ultimo giorno nei mesi corti).
+- Ogni rata ha `tx.inst = { g (gruppo), i, n, tot }`; nella riga compare «rata i/n». Nel foglio di una rata si modifica solo quella; «Elimina tutte le rate» cancella l'intero gruppo (`delRate`).
+- Le frecce del mese permettono di andare avanti fino all'ultimo mese con movimenti (`lastMonth()`), per vedere le rate future.
 
 ## iPhone: cose già risolte, da non rompere
 
