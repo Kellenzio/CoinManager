@@ -2,7 +2,7 @@
 <html lang="it">
 <head>
 <meta charset="utf-8">
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'sha256-3UEUDENHO6bHS6ebfgbekUnwEzdpNgCbqj74L46qTRQ=' 'sha256-M1tg/DVQTxp4T7XrdKoqOxxKpnZDrK2X2t1G3UFPAu0='; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data: blob:; connect-src 'self' https://api.anthropic.com https://api.github.com data: blob:; manifest-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'sha256-3UEUDENHO6bHS6ebfgbekUnwEzdpNgCbqj74L46qTRQ=' 'sha256-Ja9nHzFojOHyafr2ZvIVegOki855IPA/4PjHAKhbwMM='; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data: blob:; connect-src 'self' https://api.anthropic.com https://api.github.com data: blob:; manifest-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
 <title>Spese</title>
 <meta name="apple-mobile-web-app-capable" content="yes">
@@ -683,6 +683,28 @@ html:root[data-theme]{--c1:#3498db;--c2:#e67e22;--c3:#1abc9c;--c4:#f1c40f;--c5:#
   .view{padding-bottom:88px}
 }
 
+/* selezione multipla */
+#vTx .tx{-webkit-user-select:none;user-select:none;-webkit-touch-callout:none}
+#selbar{position:fixed;top:0;left:0;right:0;z-index:36;display:flex;align-items:center;gap:6px;background:var(--bg);padding:calc(var(--top) + 6px) 8px 6px 8px;border-bottom:1px solid var(--line)}
+#selbar[hidden],#selact[hidden]{display:none}
+#selbar .seltit{flex:1;min-width:0}
+#selbar .seltit b{display:block;font:700 18px/1.2 var(--font)}
+#selbar .seltit small{display:block;color:var(--muted);font-size:13px;font-variant-numeric:tabular-nums}
+#selbar .selall{border:0;background:none;color:var(--fg);font:600 15px var(--font);padding:10px 12px;border-radius:12px}
+#selact{position:fixed;left:0;right:0;bottom:0;z-index:36;display:flex;background:var(--bg);border-top:1px solid var(--line);padding-bottom:var(--bot)}
+#selact button{flex:1;height:var(--nav-h);border:0;background:none;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;font-size:11px;color:var(--fg)}
+#selact button svg{width:24px;height:24px;stroke:currentColor;fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+#selact button.danger{color:var(--danger)}
+#selact button:disabled{opacity:.35}
+body.selmode nav .plus{display:none}
+body.selmode .swipe .sdel{display:none}
+body.selmode #vTx .tx::after{content:"";position:absolute;left:36px;top:34px;width:20px;height:20px;border-radius:50%;border:2px solid var(--muted);background:var(--bg);box-sizing:border-box;display:grid;place-items:center;font-size:12px;line-height:1;font-weight:800;color:var(--bg);z-index:2}
+body.selmode #vTx .tx.sel{background:var(--surface)}
+body.selmode #vTx .tx.sel::after{content:"✓";background:var(--fg);border-color:var(--fg)}
+.chip.plus{min-width:46px;padding-left:14px;padding-right:14px;font-weight:700;color:var(--muted)}
+.chip.plus[aria-pressed="true"]{color:var(--bg)}
+@media (min-width:900px){#selbar,#selact{left:88px}}
+
 /* stampa / PDF del report: solo il contenuto */
 @media print{
   html,body{height:auto;overflow:visible;position:static;background:#fff;color:#000}
@@ -718,6 +740,14 @@ html:root[data-theme]{--c1:#3498db;--c2:#e67e22;--c3:#1abc9c;--c4:#f1c40f;--c5:#
   <button data-tab="vInv"><svg viewBox="0 0 24 24"><path d="M3.5 17 9.5 11l4 4 7-8"/><path d="M15 7h5.5v5.5"/></svg>Investi</button>
   <button data-tab="vCats"><svg viewBox="0 0 24 24"><rect x="4" y="4" width="7" height="7" rx="2"/><rect x="13" y="4" width="7" height="7" rx="2"/><rect x="4" y="13" width="7" height="7" rx="2"/><rect x="13" y="13" width="7" height="7" rx="2"/></svg>Categorie</button>
 </nav>
+<div id="selbar" hidden><button class="icon-btn" data-act="selExit" aria-label="Annulla la selezione"><svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6 6 18"/></svg></button>
+  <div class="seltit"><b id="selN"></b><small id="selSum"></small></div><button class="selall" data-act="selAll">Tutti</button></div>
+<div id="selact" hidden>
+  <button data-act="selCat"><svg viewBox="0 0 24 24"><path d="M3.5 12.5V4.8a1.3 1.3 0 0 1 1.3-1.3h7.7L20.5 11.5 12.5 20z"/><circle cx="8" cy="8" r="1.2"/></svg>Categoria</button>
+  <button data-act="selDate"><svg viewBox="0 0 24 24"><rect x="3.5" y="5" width="17" height="15.5" rx="3"/><path d="M3.5 10h17M8 3v4M16 3v4"/></svg>Data</button>
+  <button data-act="selDup"><svg viewBox="0 0 24 24"><rect x="8" y="8" width="12" height="12" rx="2.5"/><path d="M16 8V6.5A2.5 2.5 0 0 0 13.5 4h-7A2.5 2.5 0 0 0 4 6.5v7A2.5 2.5 0 0 0 6.5 16H8"/></svg>Duplica</button>
+  <button data-act="selDel" class="danger"><svg viewBox="0 0 24 24"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 12a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2l1-12M9 7V4h6v3"/></svg>Elimina</button>
+</div>
 
 <section class="sheet" id="sSum" aria-label="Riepilogo categoria"></section>
 <section class="sheet" id="sProd" aria-label="Prodotto"></section>
@@ -726,6 +756,7 @@ html:root[data-theme]{--c1:#3498db;--c2:#e67e22;--c3:#1abc9c;--c4:#f1c40f;--c5:#
 <section class="sheet" id="sTx" aria-label="Movimento"></section>
 <section class="sheet" id="sCat" aria-label="Categoria"></section>
 <section class="sheet" id="sPlan" aria-label="Piano di investimento"></section>
+<section class="sheet" id="sBulk" aria-label="Movimenti selezionati"></section>
 <section class="sheet" id="sAsk" aria-label="Prodotti da chiarire"></section>
 <section class="sheet" id="sMan" aria-label="Prodotti a mano"></section>
 <section class="sheet" id="sSet" aria-label="Impostazioni"></section>
@@ -736,7 +767,7 @@ html:root[data-theme]{--c1:#3498db;--c2:#e67e22;--c3:#1abc9c;--c4:#f1c40f;--c5:#
 const $ = (s, r = document) => r.querySelector(s);
 const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 const KEY = "spese.data";
-const BUILD = "20261107083249";
+const BUILD = "20261108112219";
 /* icone delle categorie (24×24, tratto) */
 const ICONS = {
   grafico: '<path d="M3.5 17 9.5 11l4 4 7-8"/><path d="M15 7h5.5v5.5"/>',
@@ -1554,6 +1585,104 @@ function renderCats(){
 }
 
 /* ---------- foglio movimento ---------- */
+/* ---------- selezione multipla: tieni premuto su un movimento della scheda Movimenti ---------- */
+const rowsAll = () => [...document.querySelectorAll("#vTx .swipe > .tx[data-tx]")];
+function selMark(){ rowsAll().forEach(r => r.classList.toggle("sel", !!S.sel?.has(r.dataset.tx))); }
+function selUpdate(){
+  const sel = D.tx.filter(t => S.sel.has(t.id)), n = sel.length, tot = sel.reduce((a, t) => a + (t.type === "in" ? t.amt : -t.amt), 0);
+  $("#selN").textContent = n === 1 ? "1 selezionato" : n + " selezionati";
+  $("#selSum").textContent = n ? (tot >= 0 ? "+" : "−") + eur(Math.abs(tot)) : "Tocca i movimenti da selezionare";
+  document.querySelectorAll("#selact button").forEach(b => b.disabled = !n);
+  document.querySelector("#selbar .selall").textContent = n && n === rowsAll().length ? "Nessuno" : "Tutti";
+  selMark();
+}
+function selOn(id){
+  if (S.sel || S.tab !== "vTx" || document.querySelector(".sheet.open")) return;
+  S.sel = new Set([id]); closeSwipes(); document.body.classList.add("selmode");
+  $("#selbar").hidden = false; $("#selact").hidden = false; selUpdate();
+}
+function selToggle(id){ if (!S.sel) return; if (S.sel.has(id)) S.sel.delete(id); else S.sel.add(id); selUpdate(); }
+function selExit(){ if (!S.sel) return; S.sel = null; document.body.classList.remove("selmode"); $("#selbar").hidden = true; $("#selact").hidden = true; selMark(); }
+function selAll(){ const all = rowsAll().map(r => r.dataset.tx); if (all.length && all.every(id => S.sel.has(id))) S.sel.clear(); else all.forEach(id => S.sel.add(id)); selUpdate(); }
+let LP = null;
+document.addEventListener("pointerdown", e => {
+  const tx = e.target.closest("#vTx .swipe > .tx[data-tx]");
+  if (!tx || S.sel || (e.pointerType === "mouse" && e.button !== 0)) return;
+  clearTimeout(LP?.t);
+  LP = { id: tx.dataset.tx, x: e.clientX, y: e.clientY, t: setTimeout(() => {
+    if (!LP || tx._x) return;
+    selOn(LP.id); LP = null; S.noClick = true; setTimeout(() => { S.noClick = false; }, 700);
+    navigator.vibrate?.(12);
+  }, 450) };
+});
+document.addEventListener("pointermove", e => { if (LP && Math.hypot(e.clientX - LP.x, e.clientY - LP.y) > 10){ clearTimeout(LP.t); LP = null; } });
+["pointerup", "pointercancel"].forEach(ev => document.addEventListener(ev, () => { if (LP){ clearTimeout(LP.t); LP = null; } }));
+document.addEventListener("contextmenu", e => { if (e.target.closest("#vTx .swipe > .tx")) e.preventDefault(); });
+document.addEventListener("click", e => { if (S.noClick){ S.noClick = false; e.stopPropagation(); e.preventDefault(); } }, true);
+document.addEventListener("keydown", e => { if (e.key === "Escape" && S.sel && !document.querySelector(".sheet.open")) selExit(); });
+const selTx = () => D.tx.filter(t => S.sel?.has(t.id));
+function selDel(){
+  const sel = selTx(); if (!sel.length) return;
+  if (!confirm(`Eliminare ${sel.length === 1 ? "il movimento selezionato" : sel.length + " movimenti"}?`)) return;
+  D.tx = D.tx.filter(t => !S.sel.has(t.id)); save(); selExit(); render();
+  toast(`Eliminati ${sel.length} movimenti`, "Annulla", () => { D.tx.push(...sel); save(); render(); });
+}
+function openBulk(mode){
+  const sel = selTx(); if (!sel.length) return;
+  if (mode === "cat" && new Set(sel.map(t => t.type)).size > 1){ toast("Per cambiare categoria scegli solo spese oppure solo entrate"); return; }
+  const first = [...sel].sort((a, b) => a.date.localeCompare(b.date))[0];
+  S.bulk = { mode, n: sel.length, type: sel[0].type, cat: null, sub: null, date: first.date, month: addMonth(S.month, 1) };
+  drawBulk(); open("#sBulk");
+}
+function drawBulk(){
+  const b = S.bulk, n = b.n === 1 ? "1 movimento" : b.n + " movimenti";
+  const head = (title, btn, off) => `<div class="pbar"><button class="icon-btn" data-act="close" aria-label="Chiudi">${ICON_X}</button><h3>${title}</h3>${btn ? `<button class="btn" data-act="bulkApply"${off ? " disabled" : ""}>${btn}</button>` : ""}</div>`;
+  let h = "";
+  if (b.mode === "cat"){
+    const cats = D.cats.filter(c => c.type === b.type), c = cats.find(x => x.id === b.cat), subs = c?.subs || [];
+    h = head("Categoria", "Applica", !b.cat) + `<p class="help" style="padding:0 16px 8px">Verrà assegnata a ${n}.</p>
+      <div class="field"><label>Categoria</label><div class="catgrid">${cats.map(x => `<button class="chip" data-bcat="${esc(x.id)}" aria-pressed="${x.id === b.cat}">${cmark(x)}${esc(x.name)}</button>`).join("")}</div></div>
+      ${subs.length ? `<div class="field"><label>Sottocategoria <small class="opt">facoltativa</small></label><div class="catgrid"><button class="chip" data-bsub="" aria-pressed="${!b.sub}">Nessuna</button>${subs.map(x => `<button class="chip" data-bsub="${esc(x.id)}" aria-pressed="${x.id === b.sub}">${esc(x.name)}</button>`).join("")}</div></div>` : ""}`;
+  } else if (b.mode === "date"){
+    h = head("Cambia data", "Applica") + `<p class="help" style="padding:0 16px 8px">Vale per ${n}.</p>
+      <div class="field"><label for="bkDate">Nuova data per tutti</label><input type="date" id="bkDate" value="${esc(b.date)}"></div>
+      <div class="field"><label>Oppure sposta ognuno di</label><div class="seg" style="padding:0"><button data-bshift="-1">−1 mese</button><button data-bshift="1">+1 mese</button></div>
+        <p class="help" style="margin:6px 2px 0">Ogni movimento resta nello stesso giorno del mese.</p></div>`;
+  } else {
+    h = head("Duplica", "Duplica") + `<p class="help" style="padding:0 16px 8px">Copia ${n} in un altro mese: utile per le spese che si ripetono.</p>
+      <div class="field"><label for="bkMonth">Mese di destinazione</label><input type="month" id="bkMonth" value="${esc(b.month)}">
+        <p class="help" style="margin:6px 2px 0">Ogni copia va nello stesso giorno del mese scelto. Scontrini, rate e versamenti automatici vengono copiati come spese normali.</p></div>`;
+  }
+  $("#sBulk").innerHTML = h;
+}
+function bulkApply(){
+  const b = S.bulk, sel = selTx(); if (!b || !sel.length) return;
+  let msg = "";
+  if (b.mode === "cat"){
+    if (!b.cat) return;
+    sel.forEach(t => { t.cat = b.cat; t.sub = b.sub || null; });
+    msg = `Categoria cambiata a ${sel.length} movimenti`;
+  } else if (b.mode === "date"){
+    const d = $("#bkDate")?.value;
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(d || "")){ toast("Scegli una data"); return; }
+    sel.forEach(t => { t.date = d; });
+    msg = `Data cambiata a ${sel.length} movimenti`;
+  } else {
+    const m = $("#bkMonth")?.value;
+    if (!/^\d{4}-\d{2}$/.test(m || "")){ toast("Scegli il mese"); return; }
+    const now = Date.now();
+    sel.forEach((t, i) => { const dim = new Date(+m.slice(0, 4), +m.slice(5), 0).getDate();
+      D.tx.push({ id: uid() + i, type: t.type, cat: t.cat, sub: t.sub || null, amt: t.amt, date: `${m}-${pad(Math.min(+t.date.slice(8), dim))}`, note: t.note || "", ts: now + i }); });
+    msg = `Duplicati ${sel.length} movimenti in ${mLabel(m)}`;
+  }
+  save(); close(); selExit(); S.bulk = null; toast(msg); render();
+}
+function bulkShift(k){
+  const sel = selTx(); if (!sel.length) return;
+  sel.forEach(t => { t.date = shiftDate(t.date, k); });
+  save(); close(); selExit(); S.bulk = null; toast(`Spostati ${sel.length} movimenti di ${Math.abs(k)} mese`); render();
+}
+
 /* ---------- Investimenti (piani di accumulo) ---------- */
 /* Ogni piano è una sottocategoria di «Investimenti»: i versamenti sono normali movimenti (compaiono in Movimenti e nel Report)
    e D.inv.plans[idSottocategoria] tiene i dettagli del piano: { kind, amt (centesimi), freq, start "AAAA-MM", val, vald, closed }. */
@@ -1668,8 +1797,8 @@ function renderInv(){
 function openPlan(id){
   const p = id ? invPlans().find(x => x.id === id) : null;
   if (id && !p) return;
-  S.plan = p ? { id, name: p.name, kind: p.kind, freq: p.freq, amt: p.amt ? fmtInput(p.amt) : "", start: p.start, val: p.val ? fmtInput(p.val) : "", closed: p.closed, auto: p.auto, day: String(p.day), from: thisMonth() }
-    : { id: null, name: "", kind: "fondo", freq: "m", amt: "", start: addMonth(thisMonth(), 1), val: "", init: "", closed: false, auto: true, day: String(Math.min(new Date().getDate(), 28)), from: thisMonth() };
+  S.plan = p ? { id, name: p.name, kind: p.kind, freq: p.freq, amt: p.amt ? fmtInput(p.amt) : "", start: p.start, val: p.val ? fmtInput(p.val) : "", closed: p.closed, auto: p.auto, day: String(p.day), from: S.month }
+    : { id: null, name: "", kind: "fondo", freq: "m", amt: "", start: S.month, val: "", init: "", initDate: S.month === thisMonth() ? today() : S.month + "-01", closed: false, auto: true, day: String(S.month === thisMonth() ? Math.min(new Date().getDate(), 28) : 1), from: S.month };
   drawPlan(); open("#sPlan");
   if (!p) $("#plName").focus();
 }
@@ -1680,6 +1809,7 @@ function readPlan(){
   const v = $("#plVal"); if (v) p.val = v.value;
   const i = $("#plInit"); if (i) p.init = i.value;
   const dy = $("#plDay"); if (dy) p.day = dy.value;
+  const idt = $("#plInitDate"); if (idt) p.initDate = idt.value;
   const fr = $("#plFrom"); if (fr) p.from = fr.value;
 }
 function drawPlan(){
@@ -1712,7 +1842,8 @@ function drawPlan(){
     ${p.auto ? `<div class="field"><label for="plDay">Giorno del mese</label><input id="plDay" inputmode="numeric" maxlength="2" placeholder="es. 15" value="${esc(p.day)}" autocomplete="off">
       <p class="help" style="margin:6px 2px 0">Nei mesi più corti vale l'ultimo giorno.</p></div>` : ""}` : ""}
     ${!p.id ? `<div class="field"><label for="plInit">Versamento iniziale <small class="opt">facoltativo</small></label><input id="plInit" inputmode="decimal" placeholder="es. 500,00" value="${esc(p.init || "")}" autocomplete="off">
-      <p class="help" style="margin:6px 2px 0">Se hai già versato una somma all'apertura del piano, scrivila qui: viene registrata come primo versamento di oggi.</p></div>` : ""}
+      <p class="help" style="margin:6px 2px 0">Se hai già versato una somma all'apertura del piano, scrivila qui: viene registrata come primo versamento.</p></div>
+    <div class="field"><label for="plInitDate">Data del versamento iniziale</label><input type="date" id="plInitDate" value="${esc(p.initDate || "")}"></div>` : ""}
     ${p.id ? `<div class="field"><label for="plVal">Valore attuale <small class="opt">facoltativo</small></label><input id="plVal" inputmode="decimal" placeholder="es. 1.480,00" value="${esc(p.val)}" autocomplete="off">
       <p class="help" style="margin:6px 2px 0">Lo trovi nell'home banking. Aggiornalo quando vuoi: l'app calcola guadagno e rendimento.</p></div>
     <div class="field"><label>Stato</label>${seg("pclosed", [["0", "Attivo"], ["1", "Chiuso"]], p.closed ? "1" : "0")}</div>` : ""}
@@ -1751,7 +1882,7 @@ function savePlan(){
   if (val > 0){ o.val = val; o.vald = old.val === val && old.vald ? old.vald : today(); }
   D.inv.plans[id] = o;
   if (changed) D.tx.forEach(t => { if (t.cat === "invest" && t.sub === id && t.auto && t.date.slice(0, 7) >= from) t.amt = amt; });
-  if (init > 0) D.tx.push({ id: uid(), type: "out", cat: "invest", sub: id, amt: init, date: today(), note: "Versamento iniziale", ts: Date.now(), ini: true });
+  if (init > 0) D.tx.push({ id: uid(), type: "out", cat: "invest", sub: id, amt: init, date: /^\d{4}-\d{2}-\d{2}$/.test(p.initDate || "") ? p.initDate : today(), note: "Versamento iniziale", ts: Date.now(), ini: true });
   save(); $("#sPlan").classList.remove("open"); S.plan = null;
   toast(p.id ? "Piano aggiornato" : "Piano creato"); render();
 }
@@ -1790,10 +1921,11 @@ const splitRates = (total, n) => { const b = Math.floor(total / n), a = Array(n)
 const shiftDate = (date, k) => { const d = pdate(date), t = d.getFullYear() * 12 + d.getMonth() + k, y = Math.floor(t / 12), m = t % 12; return `${y}-${pad(m + 1)}-${pad(Math.min(d.getDate(), new Date(y, m + 1, 0).getDate()))}`; };
 function ratePreview(){
   const el = $("#ratePrev"), e = S.edit; if (!el || !e?.rate?.on) return;
-  const total = parseAmt(e.raw || ""), n = Math.round(+($("#rateN")?.value || e.rate.n));
+  const total = parseAmt(e.raw || ""), n = Math.round(+($("#rateN")?.value || e.rate.n)), evi = $("#rateEv"), every = evi ? Math.round(+evi.value) : e.rate.every;
   if (!(total > 0) || !(n >= 2 && n <= 60)){ el.textContent = "Scrivi l'importo totale e il numero di rate (da 2 a 60)."; return; }
+  if (!(every >= 1 && every <= 36)){ el.textContent = "Scrivi ogni quanti mesi (da 1 a 36)."; return; }
   const date = $("#txDate")?.value || e.date, parts = splitRates(total, n);
-  const when = parts.slice(0, 4).map((_, i) => mShort(shiftDate(date, i * e.rate.every).slice(0, 7))).join(", ") + (n > 4 ? "…" : "");
+  const when = parts.slice(0, 4).map((_, i) => mShort(shiftDate(date, i * every).slice(0, 7))).join(", ") + (n > 4 ? "…" : "");
   el.textContent = `${n} rate da ${eur(parts[0])}${parts[n - 1] !== parts[0] ? " (l'ultima " + eur(parts[n - 1]) + ")" : ""} · ${when}`;
 }
 function delRate(){
@@ -1821,7 +1953,8 @@ function drawTx(){
     <div class="field"><label for="txDate">Data</label><input type="date" id="txDate" value="${esc(e.date)}"></div>
     <div class="field"><label for="txNote">Nota</label><input type="text" id="txNote" placeholder="${e.type === "out" ? "es. Esselunga, cena con amici" : "es. stipendio di ottobre"}" value="${esc(e.note)}" autocomplete="off"></div>
     ${e.type === "out" && !e.id && !e.items?.length && e.rate ? `<div class="field"><label>Pagamento</label><div class="seg" style="padding:0"><button data-rmode="0" aria-pressed="${!e.rate.on}">In una volta</button><button data-rmode="1" aria-pressed="${e.rate.on}">A rate</button></div>
-      ${e.rate.on ? `<div class="ratebox"><label for="rateN">Numero di rate</label><input id="rateN" inputmode="numeric" maxlength="2" value="${esc(e.rate.n)}" autocomplete="off"><label>Cadenza</label><div class="catgrid">${RATE_EVERY.map(([k, l]) => `<button class="chip" data-revery="${k}" aria-pressed="${k === e.rate.every}">${l}</button>`).join("")}</div><p class="help" id="ratePrev"></p></div>` : ""}</div>` : ""}
+      ${e.rate.on ? `<div class="ratebox"><label for="rateN">Numero di rate</label><input id="rateN" inputmode="numeric" maxlength="2" value="${esc(e.rate.n)}" autocomplete="off"><label>Cadenza</label><div class="catgrid">${RATE_EVERY.map(([k, l]) => `<button class="chip" data-revery="${k}" aria-pressed="${!e.rate.custom && k === e.rate.every}">${l}</button>`).join("")}<button class="chip plus" data-revery="x" aria-label="Altro numero di mesi" aria-pressed="${!!e.rate.custom}">+</button></div>
+        ${e.rate.custom ? `<label for="rateEv">Una rata ogni quanti mesi</label><input id="rateEv" inputmode="numeric" maxlength="2" value="${esc(e.rate.ev || "")}" placeholder="es. 4" autocomplete="off">` : ""}<p class="help" id="ratePrev"></p></div>` : ""}</div>` : ""}
     ${e.id && e.inst ? `<div class="field"><p class="help" style="margin:0 0 10px">Rata ${e.inst.i} di ${e.inst.n} · totale ${eur(e.inst.tot)}. Qui modifichi solo questa rata.</p><button class="btn ghost wide" data-act="delRate">Elimina tutte le rate</button></div>` : ""}
     ${e.type === "out" && !(e.rate && e.rate.on) && !e.inst ? `<div class="field"><label>Scontrino <small class="opt">facoltativo</small></label>${itemsBlock(e)}</div>
     ${e.items?.length || e.sc ? `<div class="field"><label for="txSc">Sconti sullo scontrino</label><input type="text" id="txSc" inputmode="decimal" placeholder="0,00" value="${e.sc ? fmtInput(e.sc) : ""}" autocomplete="off">
@@ -1864,6 +1997,7 @@ function readTx(){
   readItems();
   const e = S.edit; e.amt = parseAmt(e.raw || ""); e.date = $("#txDate").value || today(); e.note = $("#txNote").value.trim();
   const rn = $("#rateN"); if (rn && e.rate) e.rate.n = rn.value;
+  const rev = $("#rateEv"); if (rev && e.rate){ e.rate.ev = rev.value; const k = Math.round(+rev.value); if (k >= 1 && k <= 36) e.rate.every = k; }
   const sci = $("#txSc"); if (sci){ const v = parseAmt(sci.value); e.sc = v > 0 ? v : 0; }
 }
 function saveTx(){
@@ -1873,8 +2007,10 @@ function saveTx(){
   if (e.rate?.on && !e.id && e.type === "out"){
     const n = Math.round(+e.rate.n);
     if (!(n >= 2 && n <= 60)){ toast("Scrivi in quante rate (da 2 a 60)"); $("#rateN")?.focus(); return; }
+    const ev = e.rate.custom ? Math.round(+e.rate.ev) : e.rate.every;
+    if (!(ev >= 1 && ev <= 36)){ toast("Scrivi ogni quanti mesi (da 1 a 36)"); $("#rateEv")?.focus(); return; }
     const g = uid(), parts = splitRates(e.amt, n), now = Date.now();
-    parts.forEach((a, i) => D.tx.push({ id: uid() + i, type: "out", cat: e.cat, sub: e.sub || null, amt: a, date: shiftDate(e.date, i * e.rate.every), note: e.note, ts: now + i, inst: { g, i: i + 1, n, tot: e.amt } }));
+    parts.forEach((a, i) => D.tx.push({ id: uid() + i, type: "out", cat: e.cat, sub: e.sub || null, amt: a, date: shiftDate(e.date, i * ev), note: e.note, ts: now + i, inst: { g, i: i + 1, n, tot: e.amt } }));
     save(); close(); S.month = e.date.slice(0, 7);
     toast(`Spesa divisa in ${n} rate da ${eur(parts[0])}`); return render();
   }
@@ -2858,6 +2994,8 @@ function close(){
 }
 function render(){
   autoPac();
+  if (S.sel && S.tab !== "vTx") selExit();
+  if (S.tab === "vTx" && !S.sel && D.tx.length >= 3 && !D.opt.seenSel){ D.opt.seenSel = true; save(); setTimeout(() => { if (!document.querySelector(".toast")) toast("Tieni premuto su un movimento per selezionarne più di uno"); }, 700); }
   if ($("#sSum").classList.contains("open")) drawSum();
   if ($("#sProd").classList.contains("open")) drawProd();
   if ($("#sPcat").classList.contains("open")) drawPcat();
@@ -2872,7 +3010,7 @@ function render(){
   ({ vTx: renderTx, vReport: renderReport, vShop: renderProd, vInv: renderInv, vCats: renderCats })[S.tab]();
 }
 document.addEventListener("visibilitychange", () => { if (!document.hidden && autoPac()) render(); });
-function go(tab){ if (S.tab !== tab){ S.tab = tab; $("#main").scrollTop = 0; } render(); }
+function go(tab){ if (S.sel) selExit(); if (S.tab !== tab){ S.tab = tab; $("#main").scrollTop = 0; } render(); }
 
 let toastT;
 function toast(msg, act, fn){
@@ -2883,6 +3021,7 @@ function toast(msg, act, fn){
 }
 
 document.addEventListener("click", e => {
+  if (S.sel){ const row = e.target.closest("#vTx .swipe > .tx[data-tx]"); if (row){ selToggle(row.dataset.tx); return; } }
   const sx = e.target.closest(".swipe > .tx");
   if (sx && (sx._x || Date.now() - (sx._sw || 0) < 450)){ setSwipe(sx, 0); return; }
   if (!sx) closeSwipes();
@@ -2926,12 +3065,15 @@ document.addEventListener("click", e => {
   if (d.mandel !== undefined){ S.edit.items.splice(+d.mandel, 1); return drawManList(); }
   if (d.askpc){ const it = S.edit.items[S.ask.idx[S.ask.i]]; it.c = d.askpc; it.pcManual = true; document.querySelectorAll("[data-askpc]").forEach(b => b.setAttribute("aria-pressed", b === el)); return; }
   if (d.rmode !== undefined){ readTx(); S.edit.rate.on = d.rmode === "1"; drawTx(); return sizeAmt(); }
-  if (d.revery){ readTx(); S.edit.rate.every = +d.revery; drawTx(); return sizeAmt(); }
+  if (d.revery){ readTx(); const r = S.edit.rate; if (d.revery === "x"){ r.custom = true; if (!r.ev) r.ev = String(r.every); } else { r.custom = false; r.every = +d.revery; } drawTx(); return sizeAmt(); }
   if (d.type && el.closest(".seg")){ readTx(); S.edit.type = d.type; drawTx(); return sizeAmt(); }
   if (d.plan){ return openPlan(d.plan); }
   if (d.ichart){ S.ichart = d.ichart; return renderInv(); }
   if (d.pkind){ readPlan(); S.plan.kind = d.pkind; return drawPlan(); }
   if (d.pfreq){ readPlan(); S.plan.freq = d.pfreq; return drawPlan(); }
+  if (d.bcat !== undefined){ S.bulk.cat = d.bcat; S.bulk.sub = null; return drawBulk(); }
+  if (d.bsub !== undefined){ S.bulk.sub = d.bsub || null; return drawBulk(); }
+  if (d.bshift !== undefined){ return bulkShift(+d.bshift); }
   if (d.pauto !== undefined){ readPlan(); S.plan.auto = d.pauto === "1"; return drawPlan(); }
   if (d.pclosed !== undefined){ readPlan(); S.plan.closed = d.pclosed === "1"; return drawPlan(); }
   if (d.ctype){ readCat(); S.cat.type = d.ctype; return drawCat(); }
@@ -2951,6 +3093,13 @@ document.addEventListener("click", e => {
     case "invPay": return invPay(d.id);
     case "invRestore": return invRestore();
     case "delRate": return delRate();
+    case "selExit": return selExit();
+    case "selAll": return selAll();
+    case "selDel": return selDel();
+    case "selCat": return openBulk("cat");
+    case "selDate": return openBulk("date");
+    case "selDup": return openBulk("dup");
+    case "bulkApply": return bulkApply();
     case "kp": return showKp(true);
     case "rcPaste": return pasteReceipt();
     case "rcCancel": readTx(); S.rc = null; return drawTx();
@@ -3017,7 +3166,7 @@ function sizeAmt(){ const a = $("#amt"); if (!a || !S.edit) return; const r = S.
 document.addEventListener("input", e => {
   if (e.target.id === "catName"){ const b = $("#catPrev b"); if (b) b.textContent = e.target.value.trim() || "Nuova categoria"; const x = $("#catPrev .cb"); if (x && !ICONS[S.cat.icon]){ S.cat.name = e.target.value; x.outerHTML = cbadge(S.cat, "lg"); } }
   if (e.target.id === "amt") sizeAmt();
-  if (e.target.id === "rateN" || e.target.id === "txDate") ratePreview();
+  if (e.target.id === "rateN" || e.target.id === "rateEv" || e.target.id === "txDate") ratePreview();
   if (e.target.id === "q"){ S.q = e.target.value; const pos = e.target.selectionStart; renderTx(); const q = $("#q"); q.focus(); q.setSelectionRange(pos, pos); }
 });
 document.addEventListener("keydown", e => {

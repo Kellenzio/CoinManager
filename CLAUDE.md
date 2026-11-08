@@ -82,6 +82,20 @@ Pubblicata su GitHub Pages, installata dalla schermata Home di Safari (modalità
 - Ogni rata ha `tx.inst = { g (gruppo), i, n, tot }`; nella riga compare «rata i/n». Nel foglio di una rata si modifica solo quella; «Elimina tutte le rate» cancella l'intero gruppo (`delRate`).
 - Le frecce del mese permettono di andare avanti fino all'ultimo mese con movimenti (`lastMonth()`), per vedere le rate future.
 
+## Selezione multipla (scheda Movimenti)
+
+- **Tieni premuto ~0,5 s** su un movimento (`pointerdown` + timer, annullato se il dito si muove) per entrare in `S.sel` (un `Set` di id; `body.selmode`).
+  Da lì un tocco seleziona/deseleziona (CSS: spunta sull'icona, riga evidenziata). Barra in alto `#selbar` (✕, conteggio e somma, Tutti/Nessuno) e barra in basso
+  `#selact` (Categoria, Data, Duplica, Elimina) sostituiscono header e menu; il + è nascosto. Il click che segue la pressione lunga viene ignorato (`S.noClick`).
+- **Azioni**: Elimina (con «Annulla»), Categoria e sottocategoria uguali per tutti (solo se tutti spese o tutte entrate), Data (nuova data per tutti, oppure ±1 mese),
+  Duplica in un altro mese (copie come spese normali). Il foglio `#sBulk` (`openBulk`/`drawBulk`/`bulkApply`/`bulkShift`) le gestisce. Esce con ✕, Esc o a fine azione.
+- Una tantum compare un suggerimento («Tieni premuto…», `D.opt.seenSel`).
+
+## Mese selezionato
+
+Qualsiasi nuovo inserimento usa il **mese scelto con le frecce** (`S.month`): nuova spesa (primo del mese, oppure oggi se è il mese in corso), piani PAC
+(mese di partenza, «vale dal mese», data del versamento iniziale), «Versa». Nelle rate la cadenza può essere personalizzata (+ → ogni N mesi, 1–36).
+
 ## iPhone: cose già risolte, da non rompere
 
 - Status bar `black` (non translucent) e altezza con `100dvh`; `fitApp()` calcola `--bot` (spazio sotto) con un elemento sonda.
