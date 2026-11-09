@@ -2,7 +2,7 @@
 <html lang="it">
 <head>
 <meta charset="utf-8">
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'sha256-3UEUDENHO6bHS6ebfgbekUnwEzdpNgCbqj74L46qTRQ=' 'sha256-Ja9nHzFojOHyafr2ZvIVegOki855IPA/4PjHAKhbwMM='; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data: blob:; connect-src 'self' https://api.anthropic.com https://api.github.com data: blob:; manifest-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'sha256-3UEUDENHO6bHS6ebfgbekUnwEzdpNgCbqj74L46qTRQ=' 'sha256-C38N1bymyq5e8nAfJO1nx53Gx8Oeb2kOsA9yhjnXO+g='; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data: blob:; connect-src 'self' https://api.anthropic.com https://api.github.com data: blob:; manifest-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
 <title>Spese</title>
 <meta name="apple-mobile-web-app-capable" content="yes">
@@ -757,6 +757,7 @@ body.selmode #vTx .tx.sel::after{content:"✓";background:var(--fg);border-color
 <section class="sheet" id="sCat" aria-label="Categoria"></section>
 <section class="sheet" id="sPlan" aria-label="Piano di investimento"></section>
 <section class="sheet" id="sBulk" aria-label="Movimenti selezionati"></section>
+<section class="sheet" id="sGroup" aria-label="Budget condiviso"></section>
 <section class="sheet" id="sAsk" aria-label="Prodotti da chiarire"></section>
 <section class="sheet" id="sMan" aria-label="Prodotti a mano"></section>
 <section class="sheet" id="sSet" aria-label="Impostazioni"></section>
@@ -767,7 +768,7 @@ body.selmode #vTx .tx.sel::after{content:"✓";background:var(--fg);border-color
 const $ = (s, r = document) => r.querySelector(s);
 const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 const KEY = "spese.data";
-const BUILD = "20261108112219";
+const BUILD = "20261109202053";
 /* icone delle categorie (24×24, tratto) */
 const ICONS = {
   grafico: '<path d="M3.5 17 9.5 11l4 4 7-8"/><path d="M15 7h5.5v5.5"/>',
@@ -888,6 +889,14 @@ function sanitize(d){
     if (isObj(q) && typeof q.g === "string" && ID_OK.test(q.g) && Number.isInteger(q.n) && q.n >= 2 && q.n <= 120 && Number.isInteger(q.i) && q.i >= 1 && q.i <= q.n && (int(q.tot, 1e12) ?? 0) > 0) o.inst = { g: q.g, i: q.i, n: q.n, tot: q.tot };
     tx.push(o);
   }
+  const outIds = new Set(cats.filter(c => c.type === "out").map(c => c.id)), usedG = new Set(), takenC = new Set(), groups = [];
+  for (const g of Array.isArray(d.groups) ? d.groups : []){
+    if (!isObj(g) || !Array.isArray(g.cats) || (int(g.amt, 1e11) ?? 0) <= 0) continue;
+    const cs = [...new Set(g.cats.map(x => catMap.get(x) ?? x).filter(x => typeof x === "string" && outIds.has(x) && !takenC.has(x)))];
+    if (cs.length < 2) continue;
+    cs.forEach(x => takenC.add(x));
+    groups.push({ id: take(g.id, usedG), name: str(g.name, 40), amt: g.amt, cats: cs });
+  }
   const inv = { plans: {} };
   if (isObj(d.inv) && isObj(d.inv.plans)){
     const sm = subMaps.get(catMap.get("invest") ?? "invest");
@@ -910,7 +919,7 @@ function sanitize(d){
     if (!/^[A-Za-z0-9_]{1,30}$/.test(k) || BAD_KEY.test(k)) continue;
     if (typeof v === "boolean" || Number.isFinite(v)) opt[k] = v; else if (typeof v === "string") opt[k] = v.slice(0, 40);
   }
-  const out = { v: Number.isInteger(d.v) && d.v >= 1 && d.v <= 99 ? d.v : 1, cats, tx, opt, inv, updated: Number.isFinite(d.updated) ? d.updated : 0 };
+  const out = { v: Number.isInteger(d.v) && d.v >= 1 && d.v <= 99 ? d.v : 1, cats, tx, opt, inv, groups, updated: Number.isFinite(d.updated) ? d.updated : 0 };
   if (isObj(d.learn)){
     out.learn = {};
     for (const [k, v] of Object.entries(d.learn).slice(-1500)) if (k.length <= 200 && !BAD_KEY.test(k) && typeof v === "string" && PC_OK.test(v)) out.learn[k] = v;
@@ -922,7 +931,7 @@ function sanitize(d){
   return out;
 }
 
-function fresh(){ return { v: 3, cats: structuredClone(DEFAULT_CATS), tx: [], opt: {}, inv: { plans: {} } }; }
+function fresh(){ return { v: 3, cats: structuredClone(DEFAULT_CATS), tx: [], opt: {}, inv: { plans: {} }, groups: [] }; }
 /* la categoria «Investimenti» (id "invest") serve alla scheda Investi: se manca la crea, oppure adotta una categoria che si chiama già così */
 function ensureInvest(d){
   if (d.cats.some(c => c.id === "invest")) return;
@@ -937,6 +946,7 @@ function migrate(d){
     d.cats.forEach(c => { if (!Array.isArray(c.subs)) c.subs = []; if (c.icon === undefined) c.icon = DEF_ICON[c.id] || null; });
     if (d.v < 3){ ensureInvest(d); d.v = 3; }
     if (!d.inv || !d.inv.plans) d.inv = { plans: {} };
+    if (!Array.isArray(d.groups)) d.groups = [];
     return d;
   }
   const old = { c0: ["Casa", "casa"], c1: ["Spesa", "cibo", "cibo.0"], c2: ["Ristoranti e bar", "cibo"], c3: ["Trasporti", "trasporti"],
@@ -954,7 +964,7 @@ function migrate(d){
     }
   }
   for (const t of d.tx){ const m = map[t.cat]; if (m){ t.cat = m[0]; t.sub = m[1]; } }
-  return { ...d, v: 3, cats, inv: { plans: {} } };
+  return { ...d, v: 3, cats, inv: { plans: {} }, groups: [] };
 }
 let D;
 { const raw = localStorage.getItem(KEY); let ok = null;
@@ -988,6 +998,8 @@ const ymd = d => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())
 const today = () => ymd(new Date());
 const thisMonth = () => today().slice(0, 7);
 /* ultimo mese raggiungibile con le frecce: il mese in corso, o più avanti se ci sono rate già registrate */
+let lastDraft = "";
+const BOOT_DRAFT = (() => { try { return localStorage.getItem("spese.draft"); } catch { return null; } })();   // bozza lasciata aperta quando l'app è stata chiusa o scaricata dalla memoria
 const lastMonth = () => { const mx = D.tx.reduce((a, t) => t.date > a ? t.date : a, "").slice(0, 7), t = thisMonth(); return mx > t ? mx : t; };
 const pdate = s => { const [y, m, d] = s.split("-").map(Number); return new Date(y, m - 1, d || 1); };
 const addMonth = (m, k) => { const d = pdate(m + "-01"); d.setMonth(d.getMonth() + k); return ymd(d).slice(0, 7); };
@@ -1144,12 +1156,12 @@ function catRows(st, opts = {}){
   if (!st.cats.length) return "";
   const max = st.cats[0].amt;
   return `<div class="panel">${st.cats.map(c => {
-    const b = c.cat.budget, over = b && c.amt > b;
+    const bo = budgetOf(c.cat, st, c.amt), b = bo.b, sp = bo.spent, over = b && sp > b;
     return `<button class="crow" data-cat="${esc(c.cat.id)}">${cbadge(c.cat)}<div class="mid">
       <div class="nm"><span>${esc(c.cat.name)}</span><span class="num">${eur(c.amt)}</span></div>
-      <div class="meta"><span>${c.n} moviment${c.n === 1 ? "o" : "i"}${b ? ` · budget ${eur0(b)}` : ""}</span><span class="num">${pct(c.amt, st.tot)}%</span></div>
-      ${b ? `<div class="bar budget${over ? " over" : ""}"><i style="width:${Math.min(100, pct(c.amt, b))}%"></i></div>
-        <div class="meta">${over ? `<span class="warn">! Budget superato di ${eur0(c.amt - b)}</span>` : `<span>Restano ${eur0(b - c.amt)}</span>`}<span>${pct(c.amt, b)}% del budget</span></div>`
+      <div class="meta"><span>${c.n} moviment${c.n === 1 ? "o" : "i"}${b ? (bo.g ? ` · ${ratio(sp, b)} di budget` : ` · budget ${eur0(b)}`) : ""}</span><span class="num">${pct(c.amt, st.tot)}%</span></div>
+      ${b ? `<div class="bar budget${over ? " over" : ""}"><i style="width:${Math.min(100, pct(sp, b))}%"></i></div>
+        <div class="meta">${over ? `<span class="warn">! Budget superato di ${eur0(sp - b)}</span>` : `<span>Restano ${eur0(b - sp)}</span>`}<span>${pct(sp, b)}% del budget</span></div>`
         : `<div class="bar"><i style="width:${Math.max(2, c.amt / max * 100)}%;background:${cvar(c.cat.color)}"></i></div>`}
       ${hasSubs(c) ? `<div class="subs">${c.subs.slice(0, 3).map(x => `${esc(x.name)} <b class="num">${eur0(x.amt)}</b>`).join(" · ")}${c.subs.length > 3 ? " · …" : ""}</div>` : ""}
     </div>${ICON_CHEV}</button>`;
@@ -1189,11 +1201,11 @@ function catCards(st){
   if (!st.cats.length) return "";
   const stack = `<div class="stack" role="img" aria-label="Ripartizione delle spese">${st.cats.map(c => `<i style="flex:${c.amt};background:${cvar(c.cat.color)}" title="${esc(c.cat.name)} ${eur(c.amt)}"></i>`).join("")}</div>`;
   return stack + `<div class="cgrid">${st.cats.map(c => {
-    const b = c.cat.budget, over = b && c.amt > b, share = pct(c.amt, st.tot);
-    const fill = b ? Math.min(20, Math.round(c.amt / b * 20)) : Math.max(1, Math.round(c.amt / st.tot * 20));
+    const bo = budgetOf(c.cat, st, c.amt), b = bo.b, sp = bo.spent, over = b && sp > b, share = pct(c.amt, st.tot);
+    const fill = b ? Math.min(20, Math.round(sp / b * 20)) : Math.max(1, Math.round(c.amt / st.tot * 20));
     const col = over ? "var(--danger)" : cvar(c.cat.color);
     const top = c.subs.find(x => x.sub);
-    const foot = b ? (over ? `<div class="foot warn">! oltre il budget di ${eur0(c.amt - b)}</div>` : `<div class="foot">${pct(c.amt, b)}% del budget · restano ${eur0(b - c.amt)}</div>`)
+    const foot = b ? (over ? `<div class="foot warn">! oltre il budget di ${eur0(sp - b)}</div>` : bo.g ? `<div class="foot">${ratio(sp, b)} di budget</div>` : `<div class="foot">${pct(sp, b)}% del budget · restano ${eur0(b - sp)}</div>`)
       : `<div class="foot">${top ? esc(top.name) + " " + eur0(top.amt) : movs(c.n)}</div>`;
     return `<button class="ccard" data-cat="${esc(c.cat.id)}"><div class="top">${cbadge(c.cat, "sm")}<div><b>${esc(c.cat.name)}</b><small>${movs(c.n)}</small></div></div>
       <div class="amt"><b>${eur(c.amt)}</b><span>${share}%</span></div>
@@ -1314,14 +1326,15 @@ function renderReport(){
   const ins = [];
   if (prevRef){ const p = pct(st.tot - prevRef, prevRef); ins.push([p > 0 ? "📈" : "📉", p === 0 ? `Come ${cur ? "nei primi " + dd + " giorni di " + P : "a " + P}` : `<b>${Math.abs(p)}% ${p > 0 ? "in più" : "in meno"}</b> rispetto ${cur ? "ai primi " + dd + " giorni di " + P : "a " + P} (${eur0(prevRef)})`]); }
   if (cur && dd >= 3 && dm > dd) ins.push(["🔮", `A questo ritmo chiudi il mese intorno a <b>${eur0(st.tot / dd * dm)}</b>`]);
-  const over = st.cats.filter(c => c.cat.budget && c.amt > c.cat.budget);
-  if (over.length) ins.push(["⚠️", `Oltre il budget: ${over.map(c => `<b>${esc(c.cat.name)}</b> (+${eur0(c.amt - c.cat.budget)})`).join(", ")}`]);
+  const over = st.cats.filter(c => !grpOf(c.cat.id) && c.cat.budget && c.amt > c.cat.budget).map(c => [c.cat.name, c.amt - c.cat.budget]);
+  (D.groups || []).forEach(g => { const sp = grpSpent(g, st); if (sp > g.amt) over.push([grpName(g), sp - g.amt]); });
+  if (over.length) ins.push(["⚠️", `Oltre il budget: ${over.map(([n, d]) => `<b>${esc(n)}</b> (+${eur0(d)})`).join(", ")}`]);
   if (st.cats[0]) ins.push(["🏷️", `La voce più grande è <b>${esc(st.cats[0].cat.name)}</b>: ${pct(st.cats[0].amt, st.tot)}% delle spese`]);
   if (prevRef){
     const ch = st.cats.map(c => ({ c: c.cat, d: c.amt - (prevCats.get(c.cat.id) || 0) })).sort((a, b) => b.d - a.d);
     if (ch[0] && ch[0].d >= 500) ins.push(["↗️", `Cresce di più <b>${esc(ch[0].c.name)}</b>: +${eur0(ch[0].d)} rispetto ${vsTxt.startsWith("ai") ? vsTxt : "a " + vsTxt}`]);
   }
-  if (!over.length && st.cats.some(c => c.cat.budget)) ins.push(["✅", "Tutti i budget sono rispettati"]);
+  if (!over.length && st.cats.some(c => budgetOf(c.cat, st, c.amt).b)) ins.push(["✅", "Tutti i budget sono rispettati"]);
 
   // andamento: un solo grafico, scegli tu cosa vedere
   const rc = S.rchart || "days";
@@ -1349,10 +1362,11 @@ function renderReport(){
 
     ${st.cats.length ? `<div class="shead"><h2>Dove hai speso</h2><span class="help">tocca per il dettaglio</span></div>
     <div class="panel">${donut(foldRows(st.cats, st.tot), st.tot)}${st.cats.map(c => {
-      const p = prevCats.get(c.cat.id) || 0, dt = prevRef ? dTag(c.amt - p, p) : "";
+      const p = prevCats.get(c.cat.id) || 0, dt = prevRef ? dTag(c.amt - p, p) : "", bo = budgetOf(c.cat, st, c.amt);
+      const bt = bo.b ? ` · ${ratio(bo.spent, bo.b)}${bo.spent > bo.b ? " ⚠️" : ""}` : "";
       return `<button class="crow" data-cat="${esc(c.cat.id)}">${cbadge(c.cat)}<div class="mid">
         <div class="nm"><span>${esc(c.cat.name)}</span><span class="num">${eur(c.amt)}</span></div>
-        <div class="meta"><span>${pct(c.amt, st.tot)}% · ${movs(c.n)}</span><span class="num">${dt}</span></div>
+        <div class="meta"><span>${pct(c.amt, st.tot)}% · ${movs(c.n)}${bt}</span><span class="num">${dt}</span></div>
         <div class="bar"><i style="width:${Math.max(2, c.amt / st.cats[0].amt * 100)}%;background:${cvar(c.cat.color)}"></i></div></div>${ICON_CHEV}</button>`;
     }).join("")}</div>
     ${prevRef ? `<p class="help" style="margin:8px 4px 0">▲▼ = differenza rispetto ${cur ? "ai primi " + dd + " giorni di " + P : "a " + P}.</p>` : ""}` : ""}
@@ -1571,7 +1585,8 @@ function renderCats(){
   const v = $("#vCats"), st = monthStats(S.month), inc = byCat(txIn(S.month, "in"));
   const list = type => D.cats.filter(c => c.type === type).map(c => {
     const a = (type === "out" ? st.cats : inc).find(x => x.cat.id === c.id)?.amt || 0;
-    const info = [`${mName(S.month)}: ${eur(a)}`]; if (c.budget) info.push(`budget ${eur0(c.budget)}`);
+    const info = [`${mName(S.month)}: ${eur(a)}`], g = type === "out" ? grpOf(c.id) : null;
+    if (g) info.push(`${ratio(grpSpent(g, st), g.amt)} di budget`); else if (c.budget) info.push(`budget ${eur0(c.budget)}`);
     const subs = c.subs.length ? c.subs.map(x => esc(x.name)).join(", ") : "nessuna sottocategoria";
     return `<button class="list-item" data-cat="${esc(c.id)}">${cbadge(c)}<span>${esc(c.name)}<small class="clamp">${subs}</small><small>${info.join(" · ")}</small></span>${ICON_CHEV}</button>`;
   }).join("");
@@ -1579,12 +1594,65 @@ function renderCats(){
     <div class="shead"><h2>Categorie di spesa</h2><button data-act="newCat" data-type="out">+ Nuova</button></div>
     <div class="panel">${list("out")}</div>
     <p class="help">Tocca una categoria per aggiungere, rinominare o eliminare le sue sottocategorie, cambiarle colore o darle un budget mensile.</p>
+    ${grpSection(st)}
     <div class="shead"><h2>Categorie di entrata</h2><button data-act="newCat" data-type="in">+ Nuova</button></div>
     <div class="panel">${list("in")}</div>
   </div>`;
 }
 
 /* ---------- foglio movimento ---------- */
+/* ---------- budget condivisi tra più categorie ---------- */
+/* D.groups = [{ id, name, amt (centesimi al mese), cats: [idCategoria, ...] }]: la somma delle spese delle categorie scelte si confronta con un solo budget. */
+const grpOf = id => (D.groups || []).find(g => g.cats.includes(id)) || null;
+const grpName = g => g.name || g.cats.map(id => D.cats.find(c => c.id === id)?.name).filter(Boolean).join(" + ");
+const grpSpent = (g, st) => st.cats.filter(x => g.cats.includes(x.cat.id)).reduce((a, x) => a + x.amt, 0);
+const ratio = (a, b) => eur0(a).replace(/\s*€$/, "") + " / " + eur0(b);
+function budgetOf(cat, st, amt){ const g = grpOf(cat.id); return g ? { b: g.amt, spent: grpSpent(g, st), g } : { b: cat.budget || 0, spent: amt, g: null }; }
+function pruneGroups(){ const ok = new Set(D.cats.filter(c => c.type === "out").map(c => c.id)); D.groups = (D.groups || []).map(g => ({ ...g, cats: g.cats.filter(id => ok.has(id)) })).filter(g => g.cats.length >= 2); }
+function openGroup(id){
+  const g = id ? (D.groups || []).find(x => x.id === id) : null;
+  if (id && !g) return;
+  S.group = g ? { id, name: g.name, amt: fmtInput(g.amt), cats: [...g.cats] } : { id: null, name: "", amt: "", cats: [] };
+  drawGroup(); open("#sGroup");
+  if (!g) $("#grpName").focus();
+}
+function readGroup(){ const g = S.group; if (!g || !$("#grpAmt")) return; g.name = $("#grpName").value.trim(); g.amt = $("#grpAmt").value; }
+function drawGroup(){
+  const g = S.group, free = D.cats.filter(c => c.type === "out" && (!grpOf(c.id) || grpOf(c.id).id === g.id));
+  $("#sGroup").innerHTML = `<div class="pbar"><button class="icon-btn" data-act="close" aria-label="Chiudi">${ICON_X}</button><h3>${g.id ? "Budget condiviso" : "Nuovo budget condiviso"}</h3><button class="btn" data-act="saveGroup">Salva</button></div>
+    <div class="field"><label for="grpName">Nome <small class="opt">facoltativo</small></label><input type="text" id="grpName" value="${esc(g.name)}" placeholder="es. Tempo libero" autocomplete="off" maxlength="40"></div>
+    <div class="field"><label for="grpAmt">Budget mensile in comune</label><input id="grpAmt" inputmode="decimal" placeholder="es. 350,00" value="${esc(g.amt)}" autocomplete="off"></div>
+    <div class="field"><label>Categorie che lo condividono</label><div class="catgrid">${free.map(c => `<button class="chip" data-gcat="${esc(c.id)}" aria-pressed="${g.cats.includes(c.id)}">${cmark(c)}${esc(c.name)}</button>`).join("")}</div>
+      <p class="help" style="margin:8px 2px 0">Scegline almeno due. Il budget vale per la somma di tutte: in ogni categoria vedi quanto avete speso insieme sul totale, per esempio 270 / 350. Il budget singolo delle categorie scelte non viene più usato.</p></div>
+    ${g.id ? `<div class="field"><button class="btn danger wide" data-act="delGroup">Elimina budget condiviso</button></div>` : ""}`;
+}
+function saveGroup(){
+  readGroup(); const g = S.group;
+  const amt = parseAmt(g.amt || "");
+  if (!(amt > 0)){ toast("Scrivi il budget mensile"); $("#grpAmt").focus(); return; }
+  if (g.cats.length < 2){ toast("Scegli almeno due categorie"); return; }
+  if (!D.groups) D.groups = [];
+  if (g.id){ const x = D.groups.find(y => y.id === g.id); if (x){ x.name = g.name; x.amt = amt; x.cats = [...g.cats]; } }
+  else D.groups.push({ id: uid(), name: g.name, amt, cats: [...g.cats] });
+  save(); $("#sGroup").classList.remove("open"); S.group = null;
+  toast(g.id ? "Budget condiviso aggiornato" : "Budget condiviso creato"); render();
+  if ($("#sCat").classList.contains("open") && S.cat?.id){ readCat(); drawCat(); }
+}
+function delGroup(){
+  const g = S.group; if (!g?.id) return;
+  if (!confirm("Eliminare questo budget condiviso? Le categorie restano, senza budget in comune.")) return;
+  D.groups = D.groups.filter(x => x.id !== g.id);
+  save(); $("#sGroup").classList.remove("open"); S.group = null; toast("Budget condiviso eliminato"); render();
+  if ($("#sCat").classList.contains("open") && S.cat?.id){ readCat(); drawCat(); }
+}
+function grpSection(st){
+  const gs = D.groups || [];
+  return `<div class="shead"><h2>Budget condivisi</h2><button data-act="newGroup">+ Nuovo</button></div>` + (gs.length
+    ? `<div class="panel">${gs.map(g => { const sp = grpSpent(g, st), over = sp > g.amt;
+        return `<button class="list-item" data-grp="${esc(g.id)}"><span class="cb pk">💶</span><span>${esc(grpName(g))}<small class="clamp">${g.cats.map(id => esc(D.cats.find(c => c.id === id)?.name || "")).join(", ")}</small><small${over ? ' class="warn"' : ""}>${esc(mName(S.month))}: ${ratio(sp, g.amt)} di budget${over ? " · superato" : ""}</small></span>${ICON_CHEV}</button>`; }).join("")}</div>`
+    : `<p class="help">Un budget in comune per più categorie insieme, per esempio Svago e Shopping: in ognuna vedi quanto avete speso in tutto sul totale.</p>`);
+}
+
 /* ---------- selezione multipla: tieni premuto su un movimento della scheda Movimenti ---------- */
 const rowsAll = () => [...document.querySelectorAll("#vTx .swipe > .tx[data-tx]")];
 function selMark(){ rowsAll().forEach(r => r.classList.toggle("sel", !!S.sel?.has(r.dataset.tx))); }
@@ -1888,12 +1956,19 @@ function savePlan(){
 }
 function delPlan(){
   const p = S.plan; if (!p?.id) return;
-  const n = planTx(p.id).length;
-  if (!confirm(`Eliminare "${p.name}"?${n ? `\nI suoi ${n} versamenti restano in Investimenti, senza piano.` : ""}`)) return;
-  const c = invCat(); if (c) c.subs = c.subs.filter(x => x.id !== p.id);
-  delete D.inv.plans[p.id];
-  D.tx.forEach(t => { if (t.cat === "invest" && t.sub === p.id) t.sub = null; });
-  save(); $("#sPlan").classList.remove("open"); S.plan = null; toast("Piano eliminato"); render();
+  const mine = D.tx.filter(t => t.cat === "invest" && t.sub === p.id), n = mine.length;
+  if (!confirm(`Eliminare definitivamente "${p.name}"?${n ? `\nVerranno eliminati anche i suoi ${n} versamenti in tutti i mesi.` : ""}\nSe vuoi solo fermarlo, imposta lo stato su «Chiuso».`)) return;
+  const c = invCat(), sub = c?.subs.find(x => x.id === p.id), meta = D.inv.plans[p.id], id = p.id;
+  if (c) c.subs = c.subs.filter(x => x.id !== id);
+  delete D.inv.plans[id];
+  D.tx = D.tx.filter(t => !(t.cat === "invest" && t.sub === id));
+  save(); $("#sPlan").classList.remove("open"); S.plan = null;
+  toast(n ? `Piano eliminato con ${n} versamenti` : "Piano eliminato", "Annulla", () => {
+    const c2 = invCat(); if (c2 && sub) c2.subs.push(sub);
+    if (meta) D.inv.plans[id] = meta;
+    D.tx.push(...mine); save(); render();
+  });
+  render();
 }
 /* registra un versamento: si apre il foglio del movimento già compilato (importo, categoria e piano) */
 function invPay(id){
@@ -2081,10 +2156,11 @@ function drawSum(){
   const word = c.type === "out" ? "Spese" : "Entrate";
   let delta = "";
   if (prev){ const d = tot - prev; delta = Math.abs(d) < 100 ? `<span>come a ${mName(pm)}</span>` : `<span><b>${d > 0 ? "▲ +" : "▼ −"}${eur0(Math.abs(d))}</b> rispetto a${upTo < 31 ? ` ${upTo} giorni di` : ""} ${mName(pm)}</span>`; }
-  const b = c.budget, over = b && tot > b;
+  const bo = budgetOf(c, monthStats(S.month), tot), b = bo.b, sp = bo.spent, over = b && sp > b;
   const budget = b ? `<div class="sumbudget"><div class="meta" style="display:flex;justify-content:space-between;font-size:13px">
-      <span>${over ? `<span class="warn">Budget superato di ${eur0(tot - b)}</span>` : `Restano <b>${eur0(b - tot)}</b> del budget`}</span><span class="num">${pct(tot, b)}% di ${eur0(b)}</span></div>
-      <div class="bar budget${over ? " over" : ""}"><i style="width:${Math.min(100, pct(tot, b))}%"></i></div></div>` : "";
+      <span>${over ? `<span class="warn">Budget superato di ${eur0(sp - b)}</span>` : `Restano <b>${eur0(b - sp)}</b> del budget`}</span><span class="num">${bo.g ? ratio(sp, b) : pct(sp, b) + "% di " + eur0(b)}</span></div>
+      <div class="bar budget${over ? " over" : ""}"><i style="width:${Math.min(100, pct(sp, b))}%"></i></div>
+      ${bo.g ? `<div class="meta" style="font-size:12.5px;margin-top:6px;color:var(--muted)">Budget condiviso con ${bo.g.cats.filter(x => x !== c.id).map(x => esc(D.cats.find(y => y.id === x)?.name || "")).join(", ")}</div>` : ""}</div>` : "";
   const bs = bySub(tx);
   const subT = bs.some(x => x.sub) ? `<div class="shead"><h2>Per sottocategoria</h2></div><div class="panel">${bs.map(x => `<div class="srow"><div><span>${esc(x.name)}</span><span class="num">${eur(x.amt)}</span></div>
       <small>${movs(x.n)} · ${pct(x.amt, tot)}%</small><div class="bar"><i style="width:${Math.max(2, x.amt / bs[0].amt * 100)}%;background:${cvar(c.color)}"></i></div></div>`).join("")}</div>` : "";
@@ -2097,7 +2173,7 @@ function drawSum(){
     <div class="sumfacts"><span><b>${all ? pct(tot, all) : 0}%</b> delle ${word.toLowerCase()} del mese</span><span>${movs(tx.length)}</span>${tx.length ? `<span>media <b>${eur(tot / tx.length)}</b></span>` : ""}${delta}${big ? `<span>la più alta <b>${eur(big.amt)}</b></span>` : ""}</div>
     ${budget}
     <div class="section">${subT}
-      <div class="shead"><h2>Ultimi 6 mesi</h2></div><div class="panel">${bars("chSum", vals, { h: 140, maxW: 34, label: "Andamento della categoria", ref: b ? { v: b, label: "budget " + eur0(b) } : null })}</div>
+      <div class="shead"><h2>Ultimi 6 mesi</h2></div><div class="panel">${bars("chSum", vals, { h: 140, maxW: 34, label: "Andamento della categoria", ref: b && !bo.g ? { v: b, label: "budget " + eur0(b) } : null })}</div>
       <div class="shead"><h2>Movimenti di ${mName(S.month)}</h2></div>${tx.length ? `<div class="panel">${tx.map(txRow).join("")}</div>` : `<p class="help">Nessun movimento in questo mese.</p>`}
     </div>`;
 }
@@ -2139,14 +2215,15 @@ function drawCat(){
       <div class="subadd"><input type="text" id="newSub" placeholder="Nuova sottocategoria" maxlength="40" autocomplete="off" enterkeyhint="done"><button class="btn ghost" data-act="addSub">Aggiungi</button></div>
     </div>
     ${c.id === "invest" ? `<p class="help" style="padding:0 16px 14px;margin:-4px 0 0">Le sottocategorie sono i tuoi piani di accumulo. Importi, frequenza e rendimento si gestiscono dalla scheda Investi.</p>` : ""}
-    ${c.type === "out" ? `<div class="field"><label for="catBudget">Budget mensile (facoltativo)</label><input id="catBudget" inputmode="decimal" placeholder="nessun budget" value="${c.budget ? fmtInput(c.budget) : ""}" autocomplete="off"></div>` : ""}
+    ${c.type === "out" && grpOf(c.id) ? `<div class="field"><label>Budget</label><div class="panel"><button class="list-item" data-grp="${esc(grpOf(c.id).id)}"><span class="cb pk">💶</span><span>Condiviso: ${esc(grpName(grpOf(c.id)))}<small>${eur0(grpOf(c.id).amt)} al mese per tutte le categorie del gruppo</small></span>${ICON_CHEV}</button></div></div>` : ""}
+    ${c.type === "out" && !grpOf(c.id) ? `<div class="field"><label for="catBudget">Budget mensile (facoltativo)</label><input id="catBudget" inputmode="decimal" placeholder="nessun budget" value="${c.budget ? fmtInput(c.budget) : ""}" autocomplete="off"></div>` : ""}
     ${c.id && !c.fallback && c.id !== "invest" ? `<div class="field"><button class="btn danger wide" data-act="delCat">Elimina categoria</button></div>` : ""}
     ${stats}`;
 }
 function readCat(){
   const c = S.cat; c.name = $("#catName").value.trim();
   document.querySelectorAll("[data-subname]").forEach(i => { const x = c.subs[+i.dataset.subname]; if (x) x.name = i.value.trim(); });
-  const b = $("#catBudget"); c.budget = b && b.value.trim() ? parseAmt(b.value) : null; if (!(c.budget > 0)) c.budget = null;
+  const b = $("#catBudget"); if (b){ c.budget = b.value.trim() ? parseAmt(b.value) : null; if (!(c.budget > 0)) c.budget = null; }
 }
 function addSub(){
   readCat(); const inp = $("#newSub"), n = inp.value.trim();
@@ -2157,7 +2234,7 @@ function addSub(){
 function delSub(i){
   readCat(); const x = S.cat.subs[i]; if (!x) return;
   const n = S.cat.id ? D.tx.filter(t => t.cat === S.cat.id && t.sub === x.id).length : 0;
-  if (n && !confirm(`Eliminare "${x.name}"?\nI suoi ${n} movimenti resteranno in ${S.cat.name} senza sottocategoria.`)) return;
+  if (n && !confirm(S.cat.id === "invest" ? `Eliminare il piano "${x.name}"?\nVerranno eliminati anche i suoi ${n} versamenti.` : `Eliminare "${x.name}"?\nI suoi ${n} movimenti resteranno in ${S.cat.name} senza sottocategoria.`)) return;
   S.cat.subs.splice(i, 1); drawCat();
 }
 function saveCat(){
@@ -2171,7 +2248,7 @@ function saveCat(){
   if (c.id){ const i = D.cats.findIndex(x => x.id === c.id); D.cats[i] = { ...D.cats[i], ...clean }; }
   else { clean.id = uid(); const fb = D.cats.findIndex(x => x.fallback && x.type === c.type); D.cats.splice(fb < 0 ? D.cats.length : fb, 0, clean); }
   const keep = new Set(clean.subs.map(x => x.id));
-  if (clean.id === "invest") Object.keys(D.inv.plans).forEach(k => { if (!keep.has(k)) delete D.inv.plans[k]; });
+  if (clean.id === "invest"){ Object.keys(D.inv.plans).forEach(k => { if (!keep.has(k)) delete D.inv.plans[k]; }); D.tx = D.tx.filter(t => !(t.cat === "invest" && t.sub && !keep.has(t.sub))); }   // eliminare un piano elimina anche i suoi versamenti
   D.tx.forEach(t => { if (t.cat === clean.id && t.sub && !keep.has(t.sub)) t.sub = null; });
   save(); $("#sCat").classList.remove("open");
   if (from && S.edit){ readTxSafe(); S.edit.type = clean.type; S.edit.cat = clean.id; S.edit.sub = null; drawTx(); sizeAmt(); }
@@ -2183,7 +2260,7 @@ function delCat(){
   const c = S.cat, n = D.tx.filter(t => t.cat === c.id).length, fb = D.cats.find(x => x.fallback && x.type === c.type);
   if (!confirm(`Eliminare "${c.name}"?${n ? `\nI suoi ${n} movimenti passeranno in "${fb.name}".` : ""}`)) return;
   D.tx.forEach(t => { if (t.cat === c.id){ t.cat = fb.id; t.sub = null; } });
-  D.cats = D.cats.filter(x => x.id !== c.id); save(); close(); toast("Categoria eliminata"); render();
+  D.cats = D.cats.filter(x => x.id !== c.id); pruneGroups(); save(); close(); toast("Categoria eliminata"); render();
 }
 
 /* stile del testo: si sceglie a parte dal tema (carattere, grandezza, forme) */
@@ -2261,7 +2338,7 @@ function csv(list){
 }
 function applyData(d){
   const c = sanitize(d); if (!c) throw new Error("backup non valido");
-  D = migrate({ v: c.v, cats: c.cats, tx: c.tx, opt: { ...c.opt, theme: D.opt.theme }, inv: c.inv, learn: c.learn || D.learn || {}, names: c.names || D.names || {} }); save();
+  D = migrate({ v: c.v, cats: c.cats, tx: c.tx, opt: { ...c.opt, theme: D.opt.theme }, inv: c.inv, groups: c.groups, learn: c.learn || D.learn || {}, names: c.names || D.names || {} }); save();
 }
 function restore(file){
   const r = new FileReader();
@@ -2873,7 +2950,7 @@ async function ghRead(){
   const data = sanitize(raw);   // un backup manomesso o rovinato non entra mai così com'è
   return { sha: j.sha, data: data || sanitize({ cats: [], tx: [] }), bad: !data };
 }
-const snapshot = () => ({ app: "Spese", v: D.v, updated: D.updated || Date.now(), cats: D.cats, tx: D.tx, inv: D.inv || { plans: {} }, learn: D.learn || {}, names: D.names || {}, opt: { ...D.opt, theme: undefined } });
+const snapshot = () => ({ app: "Spese", v: D.v, updated: D.updated || Date.now(), cats: D.cats, tx: D.tx, inv: D.inv || { plans: {} }, groups: D.groups || [], learn: D.learn || {}, names: D.names || {}, opt: { ...D.opt, theme: undefined } });
 async function backupNow(manual){
   if (!GH.repo || !GH.token) return;
   if (ghBusy){ ghAgain = true; return; }
@@ -2994,6 +3071,7 @@ function close(){
 }
 function render(){
   autoPac();
+  if (!document.querySelector("#sTx.open,#sCat.open,#sPlan.open,#sGroup.open")){ try { localStorage.removeItem("spese.draft"); } catch {} lastDraft = ""; }
   if (S.sel && S.tab !== "vTx") selExit();
   if (S.tab === "vTx" && !S.sel && D.tx.length >= 3 && !D.opt.seenSel){ D.opt.seenSel = true; save(); setTimeout(() => { if (!document.querySelector(".toast")) toast("Tieni premuto su un movimento per selezionarne più di uno"); }, 700); }
   if ($("#sSum").classList.contains("open")) drawSum();
@@ -3071,6 +3149,8 @@ document.addEventListener("click", e => {
   if (d.ichart){ S.ichart = d.ichart; return renderInv(); }
   if (d.pkind){ readPlan(); S.plan.kind = d.pkind; return drawPlan(); }
   if (d.pfreq){ readPlan(); S.plan.freq = d.pfreq; return drawPlan(); }
+  if (d.grp){ return openGroup(d.grp); }
+  if (d.gcat){ readGroup(); const i = S.group.cats.indexOf(d.gcat); if (i < 0) S.group.cats.push(d.gcat); else S.group.cats.splice(i, 1); return drawGroup(); }
   if (d.bcat !== undefined){ S.bulk.cat = d.bcat; S.bulk.sub = null; return drawBulk(); }
   if (d.bsub !== undefined){ S.bulk.sub = d.bsub || null; return drawBulk(); }
   if (d.bshift !== undefined){ return bulkShift(+d.bshift); }
@@ -3093,6 +3173,9 @@ document.addEventListener("click", e => {
     case "invPay": return invPay(d.id);
     case "invRestore": return invRestore();
     case "delRate": return delRate();
+    case "newGroup": return openGroup();
+    case "saveGroup": return saveGroup();
+    case "delGroup": return delGroup();
     case "selExit": return selExit();
     case "selAll": return selAll();
     case "selDel": return selDel();
@@ -3235,12 +3318,55 @@ async function checkUpdate(){
     const { v } = await r.json();
     const slot = v + ":" + Math.floor(Date.now() / 300000);
     if (/^\d{14}$/.test(v) && v !== BUILD && sessionStorage.getItem("spese.upd") !== slot){
+      if (document.querySelector(".sheet.open") || S.sel) return;   // mai ricaricare mentre stai scrivendo: riprova al prossimo controllo
       sessionStorage.setItem("spese.upd", slot);   // al massimo un tentativo ogni 5 minuti
       await fetch(location.pathname, { cache: "reload" }).catch(() => {});
       location.replace(location.pathname + "?v=" + v);
     }
   } catch {}
 }
+/* ---------- bozza: se esci dall'app mentre stai scrivendo (copia/incolla da un'altra app, telefono che scarica l'app dalla memoria),
+   al ritorno ritrovi la scheda e i campi come li avevi lasciati. Chiavi e token delle impostazioni non vengono salvati. ---------- */
+function saveDraft(){
+  try {
+    const open = [...document.querySelectorAll(".sheet.open")].sort((a, b) => (+a.style.zIndex || 40) - (+b.style.zIndex || 40)).map(x => x.id).filter(id => ["sTx", "sCat", "sPlan", "sGroup"].includes(id));
+    if (!open.length || S.rc){ if (lastDraft){ localStorage.removeItem("spese.draft"); lastDraft = ""; } return; }
+    if (open.includes("sTx")) readTxSafe();
+    if (open.includes("sCat") && $("#catName")) readCat();
+    if (open.includes("sPlan")) readPlan();
+    if (open.includes("sGroup")) readGroup();
+    const edit = S.edit ? { ...S.edit, items: undefined } : null;
+    const j = JSON.stringify({ t: Date.now(), tab: S.tab, month: S.month, open, edit, cat: S.cat, plan: S.plan, group: S.group, kp: !!S.kp });
+    if (j.replace(/"t":\d+/, "") !== lastDraft.replace(/"t":\d+/, "")){ localStorage.setItem("spese.draft", j); lastDraft = j; }
+  } catch {}
+}
+function restoreDraft(raw){
+  try {
+    const d = JSON.parse(raw);
+    if (!d || !Array.isArray(d.open) || Date.now() - d.t > 12 * 3600e3) return;
+    if (/^\d{4}-\d{2}$/.test(d.month)) S.month = d.month;
+    if (["vTx", "vReport", "vShop", "vInv", "vCats"].includes(d.tab)) S.tab = d.tab;
+    render(); let ok = false;
+    for (const id of d.open){
+      if (id === "sTx" && d.edit && typeof d.edit === "object" && (!d.edit.id || D.tx.some(t => t.id === d.edit.id))){
+        const e = d.edit; if (!D.cats.some(c => c.id === e.cat)) e.cat = D.cats.find(c => c.type === (e.type === "in" ? "in" : "out"))?.id;
+        if (e.type !== "in" && e.type !== "out") e.type = "out";
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(e.date || "")) e.date = today();
+        S.edit = e; S.kp = !!d.kp; S.rc = null; drawTx(); open("#sTx"); sizeAmt(); ok = true;
+      } else if (id === "sCat" && d.cat && (!d.cat.id || D.cats.some(c => c.id === d.cat.id)) && Array.isArray(d.cat.subs)){ S.cat = d.cat; drawCat(); open("#sCat"); ok = true; }
+      else if (id === "sPlan" && d.plan && (!d.plan.id || invPlans().some(p => p.id === d.plan.id))){ S.plan = d.plan; drawPlan(); open("#sPlan"); ok = true; }
+      else if (id === "sGroup" && d.group && Array.isArray(d.group.cats) && (!d.group.id || (D.groups || []).some(g => g.id === d.group.id))){ S.group = d.group; drawGroup(); open("#sGroup"); ok = true; }
+    }
+    if (ok) toast("Ho ripristinato ciò che stavi scrivendo");
+  } catch {}
+}
+let draftT;
+document.addEventListener("input", () => { clearTimeout(draftT); draftT = setTimeout(saveDraft, 400); });
+document.addEventListener("visibilitychange", () => { if (document.hidden) saveDraft(); });
+window.addEventListener("pagehide", saveDraft);
+setInterval(() => { if (document.querySelector(".sheet.open")) saveDraft(); }, 3000);   // anche i tasti del tastierino numerico
+if (BOOT_DRAFT) restoreDraft(BOOT_DRAFT);
+
 checkUpdate();
 document.addEventListener("visibilitychange", () => { if (!document.hidden) checkUpdate(); });
 ghCheck();

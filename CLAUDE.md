@@ -14,7 +14,7 @@ Pubblicata su GitHub Pages, installata dalla schermata Home di Safari (modalità
 
 ## Struttura del codice
 
-- **Dati**: `localStorage["spese.data"]` → `D = { v, cats, tx, opt, inv, learn, names, updated }` (versione dati `v` = 3).
+- **Dati**: `localStorage["spese.data"]` → `D = { v, cats, tx, opt, inv, groups, learn, names, updated }` (versione dati `v` = 3).
   - `cats[]`: `{ id, name, color (0–7 = palette del tema, oppure "#hex"), icon, type: "out"|"in", budget (centesimi), fallback, subs: [{ id, name }] }`
   - `tx[]`: `{ id, type, cat, sub, amt (centesimi), date "YYYY-MM-DD", note, ts, items?, sc? }`
     - `items[]` (prodotti dello scontrino): `{ n nome, r testo grezzo, p prezzo pagato in centesimi, sc, c categoria prodotto }`
@@ -95,6 +95,21 @@ Pubblicata su GitHub Pages, installata dalla schermata Home di Safari (modalità
 
 Qualsiasi nuovo inserimento usa il **mese scelto con le frecce** (`S.month`): nuova spesa (primo del mese, oppure oggi se è il mese in corso), piani PAC
 (mese di partenza, «vale dal mese», data del versamento iniziale), «Versa». Nelle rate la cadenza può essere personalizzata (+ → ogni N mesi, 1–36).
+
+## Budget condivisi
+
+- `D.groups = [{ id, name, amt (centesimi al mese), cats: [idCategoria] }]` (almeno 2 categorie di spesa, una categoria in un solo gruppo; `sanitize()` e `pruneGroups()` lo garantiscono).
+  Per le categorie di un gruppo conta solo il budget del gruppo: `budgetOf(cat, st, amt)` restituisce `{ b, spent, g }` (spent = somma delle spese di tutte le categorie del gruppo nel mese).
+  Mostrato come «270 / 350 € di budget» in Categorie, Report (righe «Dove hai speso»), riepilogo categoria, e negli spunti («Oltre il budget»).
+- Gestione: Categorie → «Budget condivisi» → foglio `#sGroup` (`openGroup/drawGroup/saveGroup/delGroup`). Nell'editor di una categoria in un gruppo il campo budget è sostituito dal collegamento al gruppo.
+
+## Bozza e aggiornamenti
+
+- `saveDraft()` (a ogni modifica con debounce, ogni 3 s con un foglio aperto, quando l'app va in secondo piano) salva in `localStorage["spese.draft"]` i fogli di modifica aperti
+  (movimento, categoria, piano, budget condiviso) con i campi già scritti; `restoreDraft()` li riapre all'avvio (max 12 ore). Non salva mai chiavi/token delle impostazioni.
+  La bozza si cancella quando il foglio si chiude (in `render()`).
+- `checkUpdate()` **non ricarica la pagina** se c'è un foglio aperto o una selezione in corso: riprova al controllo successivo.
+- Eliminare un piano (o la sua sottocategoria in Investimenti) elimina anche tutti i suoi versamenti (con «Annulla» dal foglio del piano).
 
 ## iPhone: cose già risolte, da non rompere
 
