@@ -111,6 +111,18 @@ Qualsiasi nuovo inserimento usa il **mese scelto con le frecce** (`S.month`): nu
 - `checkUpdate()` **non ricarica la pagina** se c'è un foglio aperto o una selezione in corso: riprova al controllo successivo.
 - Eliminare un piano (o la sua sottocategoria in Investimenti) elimina anche tutti i suoi versamenti (con «Annulla» dal foglio del piano).
 
+## Tasto indietro del telefono
+
+- La pagina tiene sempre una voce di cronologia in più (`history.state.spese === 1`, `ensureGuard()`): premere indietro (o il gesto indietro) scatena `popstate` e `onBack()` fa UN passo:
+  chiude la scheda in alto → esce dalla selezione multipla → torna a Movimenti. Da Movimenti compare «Vuoi uscire dall'app?» (`#exitdlg`): *Resta* rimette la voce,
+  *Esci* prova `history.back()`/`window.close()` e, se il telefono non lo permette, chiede di premere ancora indietro (con la domanda aperta la voce NON viene rimessa:
+  un secondo indietro esce davvero). Non rimettere la voce dentro `exitApp()`.
+
+## Spese a rate: modifica
+
+- Aprendo una rata, «Solo questa rata» (predefinito) cambia solo quella; «Tutte le rate» (`d.rall`) mostra totale, data della prima rata, numero di rate e cadenza dell'intero gruppo
+  (`inst.g`) e al salvataggio le **ricalcola da capo** (`rateCheck`, `splitRates`, `shiftDate`): vecchie rate eliminate, nuove create con gli stessi dettagli.
+
 ## iPhone: cose già risolte, da non rompere
 
 - Status bar `black` (non translucent) e altezza con `100dvh`; `fitApp()` calcola `--bot` (spazio sotto) con un elemento sonda.

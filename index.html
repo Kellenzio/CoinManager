@@ -2,7 +2,7 @@
 <html lang="it">
 <head>
 <meta charset="utf-8">
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'sha256-3UEUDENHO6bHS6ebfgbekUnwEzdpNgCbqj74L46qTRQ=' 'sha256-C38N1bymyq5e8nAfJO1nx53Gx8Oeb2kOsA9yhjnXO+g='; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data: blob:; connect-src 'self' https://api.anthropic.com https://api.github.com data: blob:; manifest-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'sha256-3UEUDENHO6bHS6ebfgbekUnwEzdpNgCbqj74L46qTRQ=' 'sha256-DHhW+mjfi73o7Et9jPnIKArUUJ4EH9eNTcilEKIpPwc='; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data: blob:; connect-src 'self' https://api.anthropic.com https://api.github.com data: blob:; manifest-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
 <title>Spese</title>
 <meta name="apple-mobile-web-app-capable" content="yes">
@@ -701,6 +701,13 @@ body.selmode .swipe .sdel{display:none}
 body.selmode #vTx .tx::after{content:"";position:absolute;left:36px;top:34px;width:20px;height:20px;border-radius:50%;border:2px solid var(--muted);background:var(--bg);box-sizing:border-box;display:grid;place-items:center;font-size:12px;line-height:1;font-weight:800;color:var(--bg);z-index:2}
 body.selmode #vTx .tx.sel{background:var(--surface)}
 body.selmode #vTx .tx.sel::after{content:"✓";background:var(--fg);border-color:var(--fg)}
+#exitdlg{position:fixed;inset:0;z-index:60;display:grid;place-items:center;background:rgba(0,0,0,.55);padding:24px}
+#exitdlg[hidden]{display:none}
+.exitcard{background:var(--surface);border:1px solid var(--line);border-radius:22px;padding:22px 20px 18px;width:min(320px,100%);text-align:center}
+.exitcard h3{margin:0 0 6px;font:700 19px var(--font)}
+.exitcard p{margin:0 0 18px;color:var(--muted);font-size:14.5px}
+.exitbtns{display:flex;gap:10px}
+.exitbtns .btn{flex:1}
 .chip.plus{min-width:46px;padding-left:14px;padding-right:14px;font-weight:700;color:var(--muted)}
 .chip.plus[aria-pressed="true"]{color:var(--bg)}
 @media (min-width:900px){#selbar,#selact{left:88px}}
@@ -756,6 +763,7 @@ body.selmode #vTx .tx.sel::after{content:"✓";background:var(--fg);border-color
 <section class="sheet" id="sTx" aria-label="Movimento"></section>
 <section class="sheet" id="sCat" aria-label="Categoria"></section>
 <section class="sheet" id="sPlan" aria-label="Piano di investimento"></section>
+<div id="exitdlg" hidden data-html=""><div class="exitcard"><h3>Vuoi uscire dall'app?</h3><p>I tuoi dati restano salvati sul telefono.</p><div class="exitbtns"><button class="btn" data-act="exitStay">Resta</button><button class="btn danger" data-act="exitGo">Esci</button></div></div></div>
 <section class="sheet" id="sBulk" aria-label="Movimenti selezionati"></section>
 <section class="sheet" id="sGroup" aria-label="Budget condiviso"></section>
 <section class="sheet" id="sAsk" aria-label="Prodotti da chiarire"></section>
@@ -768,7 +776,7 @@ body.selmode #vTx .tx.sel::after{content:"✓";background:var(--fg);border-color
 const $ = (s, r = document) => r.querySelector(s);
 const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 const KEY = "spese.data";
-const BUILD = "20261109202053";
+const BUILD = "20261110101403";
 /* icone delle categorie (24×24, tratto) */
 const ICONS = {
   grafico: '<path d="M3.5 17 9.5 11l4 4 7-8"/><path d="M15 7h5.5v5.5"/>',
@@ -1994,6 +2002,17 @@ function openTx(id, day){
 const RATE_EVERY = [[1, "Mensile"], [2, "Bimestrale"], [3, "Trimestrale"], [6, "Semestrale"], [12, "Annuale"]];
 const splitRates = (total, n) => { const b = Math.floor(total / n), a = Array(n).fill(b); a[n - 1] += total - b * n; return a; };
 const shiftDate = (date, k) => { const d = pdate(date), t = d.getFullYear() * 12 + d.getMonth() + k, y = Math.floor(t / 12), m = t % 12; return `${y}-${pad(m + 1)}-${pad(Math.min(d.getDate(), new Date(y, m + 1, 0).getDate()))}`; };
+function rateBox(e){
+  return `<div class="ratebox"><label for="rateN">Numero di rate</label><input id="rateN" inputmode="numeric" maxlength="2" value="${esc(e.rate.n)}" autocomplete="off"><label>Cadenza</label><div class="catgrid">${RATE_EVERY.map(([k, l]) => `<button class="chip" data-revery="${k}" aria-pressed="${!e.rate.custom && k === e.rate.every}">${l}</button>`).join("")}<button class="chip plus" data-revery="x" aria-label="Altro numero di mesi" aria-pressed="${!!e.rate.custom}">+</button></div>
+    ${e.rate.custom ? `<label for="rateEv">Una rata ogni quanti mesi</label><input id="rateEv" inputmode="numeric" maxlength="2" value="${esc(e.rate.ev || "")}" placeholder="es. 4" autocomplete="off">` : ""}<p class="help" id="ratePrev"></p></div>`;
+}
+function rateCheck(e){
+  const n = Math.round(+e.rate.n);
+  if (!(n >= 2 && n <= 60)){ toast("Scrivi in quante rate (da 2 a 60)"); $("#rateN")?.focus(); return null; }
+  const ev = e.rate.custom ? Math.round(+e.rate.ev) : e.rate.every;
+  if (!(ev >= 1 && ev <= 36)){ toast("Scrivi ogni quanti mesi (da 1 a 36)"); $("#rateEv")?.focus(); return null; }
+  return { n, ev };
+}
 function ratePreview(){
   const el = $("#ratePrev"), e = S.edit; if (!el || !e?.rate?.on) return;
   const total = parseAmt(e.raw || ""), n = Math.round(+($("#rateN")?.value || e.rate.n)), evi = $("#rateEv"), every = evi ? Math.round(+evi.value) : e.rate.every;
@@ -2028,9 +2047,11 @@ function drawTx(){
     <div class="field"><label for="txDate">Data</label><input type="date" id="txDate" value="${esc(e.date)}"></div>
     <div class="field"><label for="txNote">Nota</label><input type="text" id="txNote" placeholder="${e.type === "out" ? "es. Esselunga, cena con amici" : "es. stipendio di ottobre"}" value="${esc(e.note)}" autocomplete="off"></div>
     ${e.type === "out" && !e.id && !e.items?.length && e.rate ? `<div class="field"><label>Pagamento</label><div class="seg" style="padding:0"><button data-rmode="0" aria-pressed="${!e.rate.on}">In una volta</button><button data-rmode="1" aria-pressed="${e.rate.on}">A rate</button></div>
-      ${e.rate.on ? `<div class="ratebox"><label for="rateN">Numero di rate</label><input id="rateN" inputmode="numeric" maxlength="2" value="${esc(e.rate.n)}" autocomplete="off"><label>Cadenza</label><div class="catgrid">${RATE_EVERY.map(([k, l]) => `<button class="chip" data-revery="${k}" aria-pressed="${!e.rate.custom && k === e.rate.every}">${l}</button>`).join("")}<button class="chip plus" data-revery="x" aria-label="Altro numero di mesi" aria-pressed="${!!e.rate.custom}">+</button></div>
-        ${e.rate.custom ? `<label for="rateEv">Una rata ogni quanti mesi</label><input id="rateEv" inputmode="numeric" maxlength="2" value="${esc(e.rate.ev || "")}" placeholder="es. 4" autocomplete="off">` : ""}<p class="help" id="ratePrev"></p></div>` : ""}</div>` : ""}
-    ${e.id && e.inst ? `<div class="field"><p class="help" style="margin:0 0 10px">Rata ${e.inst.i} di ${e.inst.n} · totale ${eur(e.inst.tot)}. Qui modifichi solo questa rata.</p><button class="btn ghost wide" data-act="delRate">Elimina tutte le rate</button></div>` : ""}
+      ${e.rate.on ? rateBox(e) : ""}</div>` : ""}
+    ${e.id && e.inst ? `<div class="field"><label>Rate</label><div class="seg" style="padding:0"><button data-rall="0" aria-pressed="${!e.rate?.on}">Solo questa rata</button><button data-rall="1" aria-pressed="${!!e.rate?.on}">Tutte le rate</button></div>
+      ${e.rate?.on ? rateBox(e) : ""}
+      <p class="help" style="margin:10px 2px 12px">Rata ${e.inst.i} di ${e.inst.n} · totale ${eur(e.inst.tot)}. ${e.rate?.on ? "Importo, data e dettagli qui sopra valgono per tutte le rate: l'app le ricalcola da capo." : "Così modifichi solo questa rata."}</p>
+      <button class="btn ghost wide" data-act="delRate">Elimina tutte le rate</button></div>` : ""}
     ${e.type === "out" && !(e.rate && e.rate.on) && !e.inst ? `<div class="field"><label>Scontrino <small class="opt">facoltativo</small></label>${itemsBlock(e)}</div>
     ${e.items?.length || e.sc ? `<div class="field"><label for="txSc">Sconti sullo scontrino</label><input type="text" id="txSc" inputmode="decimal" placeholder="0,00" value="${e.sc ? fmtInput(e.sc) : ""}" autocomplete="off">
       <p class="help" style="margin:6px 2px 0">Il totale degli sconti scritto in fondo allo scontrino («Totale sconti», «Hai risparmiato»). Serve per il report del risparmio.</p></div>` : ""}` : ""}
@@ -2079,18 +2100,16 @@ function saveTx(){
   readTx(); const e = S.edit;
   if (!(e.amt > 0)){ toast("Scrivi un importo"); showKp(true); $("#sTx").scrollTop = 0; return; }
   if (!e.cat){ toast("Scegli una categoria"); return; }
-  if (e.rate?.on && !e.id && e.type === "out"){
-    const n = Math.round(+e.rate.n);
-    if (!(n >= 2 && n <= 60)){ toast("Scrivi in quante rate (da 2 a 60)"); $("#rateN")?.focus(); return; }
-    const ev = e.rate.custom ? Math.round(+e.rate.ev) : e.rate.every;
-    if (!(ev >= 1 && ev <= 36)){ toast("Scrivi ogni quanti mesi (da 1 a 36)"); $("#rateEv")?.focus(); return; }
-    const g = uid(), parts = splitRates(e.amt, n), now = Date.now();
+  if (e.rate?.on && e.type === "out" && (!e.id || e.inst)){   // nuova spesa a rate, oppure «tutte le rate» di una spesa già rateizzata: le rate si ricalcolano da capo
+    const rp = rateCheck(e); if (!rp) return;
+    const { n, ev } = rp, g = e.id ? e.inst.g : uid(), parts = splitRates(e.amt, n), now = Date.now();
+    if (e.id) D.tx = D.tx.filter(t => t.inst?.g !== g);
     parts.forEach((a, i) => D.tx.push({ id: uid() + i, type: "out", cat: e.cat, sub: e.sub || null, amt: a, date: shiftDate(e.date, i * ev), note: e.note, ts: now + i, inst: { g, i: i + 1, n, tot: e.amt } }));
-    save(); close(); S.month = e.date.slice(0, 7);
-    toast(`Spesa divisa in ${n} rate da ${eur(parts[0])}`); return render();
+    save(); close(); if (!e.id) S.month = e.date.slice(0, 7);
+    toast(e.id ? `Rate aggiornate: ${n} da ${eur(parts[0])}` : `Spesa divisa in ${n} rate da ${eur(parts[0])}`); return render();
   }
   if (e.items){ e.items = e.items.filter(x => x.n && isFinite(x.p) && x.p !== 0); if (!e.items.length || e.type !== "out") delete e.items; else { learnItems(e.items); rememberNames(e.items); } }
-  S.rc = null; delete e.rcTotal; delete e.rate; if (!(e.sc > 0) || e.type !== "out") delete e.sc;
+  S.rc = null; delete e.rcTotal; delete e.rate; delete e.one; if (!(e.sc > 0) || e.type !== "out") delete e.sc;
   if (e.id){ const i = D.tx.findIndex(t => t.id === e.id); D.tx[i] = { ...D.tx[i], ...e }; }
   else D.tx.push({ ...e, id: uid(), ts: Date.now() });
   save(); close();
@@ -3143,6 +3162,20 @@ document.addEventListener("click", e => {
   if (d.mandel !== undefined){ S.edit.items.splice(+d.mandel, 1); return drawManList(); }
   if (d.askpc){ const it = S.edit.items[S.ask.idx[S.ask.i]]; it.c = d.askpc; it.pcManual = true; document.querySelectorAll("[data-askpc]").forEach(b => b.setAttribute("aria-pressed", b === el)); return; }
   if (d.rmode !== undefined){ readTx(); S.edit.rate.on = d.rmode === "1"; drawTx(); return sizeAmt(); }
+  if (d.rall !== undefined){
+    readTx(); const e = S.edit, on = d.rall === "1";
+    if (on && !e.rate?.on){
+      const grp = D.tx.filter(t => t.inst?.g === e.inst.g).sort((a, b) => a.date.localeCompare(b.date));
+      const every = grp.length > 1 ? Math.max(1, mIdx(grp[1].date.slice(0, 7)) - mIdx(grp[0].date.slice(0, 7))) : 1;
+      e.one = { raw: e.raw, date: e.date };
+      e.rate = { on: true, n: String(e.inst.n), every, custom: !RATE_EVERY.some(([k]) => k === every), ev: String(every) };
+      e.raw = fmtInput(e.inst.tot); if (grp.length) e.date = grp[0].date;
+    } else if (!on && e.rate?.on){
+      if (e.one){ e.raw = e.one.raw; e.date = e.one.date; }
+      e.rate.on = false;
+    }
+    drawTx(); return sizeAmt();
+  }
   if (d.revery){ readTx(); const r = S.edit.rate; if (d.revery === "x"){ r.custom = true; if (!r.ev) r.ev = String(r.every); } else { r.custom = false; r.every = +d.revery; } drawTx(); return sizeAmt(); }
   if (d.type && el.closest(".seg")){ readTx(); S.edit.type = d.type; drawTx(); return sizeAmt(); }
   if (d.plan){ return openPlan(d.plan); }
@@ -3173,6 +3206,8 @@ document.addEventListener("click", e => {
     case "invPay": return invPay(d.id);
     case "invRestore": return invRestore();
     case "delRate": return delRate();
+    case "exitStay": return exitAsk(false);
+    case "exitGo": return exitApp();
     case "newGroup": return openGroup();
     case "saveGroup": return saveGroup();
     case "delGroup": return delGroup();
@@ -3366,6 +3401,39 @@ document.addEventListener("visibilitychange", () => { if (document.hidden) saveD
 window.addEventListener("pagehide", saveDraft);
 setInterval(() => { if (document.querySelector(".sheet.open")) saveDraft(); }, 3000);   // anche i tasti del tastierino numerico
 if (BOOT_DRAFT) restoreDraft(BOOT_DRAFT);
+
+/* ---------- tasto «indietro» del telefono (e gesto indietro): torna al menu precedente invece di chiudere l'app ----------
+   La pagina tiene sempre una voce di cronologia in più: premere indietro la consuma, l'app esegue UN passo indietro
+   (chiude la scheda in alto → esce dalla selezione → torna a Movimenti) e la voce viene rimessa. Da Movimenti chiede se uscire. */
+function ensureGuard(){ if (!history.state || history.state.spese !== 1) history.pushState({ spese: 1 }, ""); }
+function exitAsk(on){
+  S.exitAsk = on; const d = $("#exitdlg");
+  if (!d.dataset.html) d.dataset.html = d.querySelector(".exitcard").innerHTML;
+  d.querySelector(".exitcard").innerHTML = d.dataset.html; d.hidden = !on;
+  if (!on) ensureGuard();
+}
+/* ritorna false quando NON si deve rimettere la voce di cronologia (è la domanda «vuoi uscire?»: un secondo «indietro» esce davvero) */
+function onBack(){
+  if (S.exitAsk){ exitAsk(false); return true; }
+  if (document.querySelector(".sheet.open")){ close(); return true; }
+  if (S.sel){ selExit(); return true; }
+  if (S.tab !== "vTx"){ go("vTx"); return true; }
+  exitAsk(true); return false;
+}
+function exitApp(){
+  const d = $("#exitdlg"); d.hidden = true; S.exitAsk = false;
+  history.back();
+  setTimeout(() => { try { window.close(); } catch {} }, 150);
+  setTimeout(() => {   // se il telefono non permette di chiudere l'app da qui: si esce con il tasto indietro
+    if (document.hidden) return;
+    S.exitAsk = true; d.hidden = false;
+    d.querySelector(".exitcard").innerHTML = `<h3>Premi ancora indietro</h3><p>Il telefono chiude l'app con il tasto indietro, oppure torna alla schermata Home.</p><div class="exitbtns"><button class="btn" data-act="exitStay">Resta nell'app</button></div>`;
+  }, 700);
+}
+if (history.state?.spese === undefined) history.replaceState({ spese: 0 }, "");   // dopo un ricaricamento la cronologia è già a posto
+ensureGuard();
+window.addEventListener("popstate", () => { if (onBack() !== false) ensureGuard(); });
+document.addEventListener("pointerdown", () => { if (!S.exitAsk) ensureGuard(); }, true);   // Chrome ignora le voci aggiunte senza un tocco dell'utente: si rimettono al primo tocco
 
 checkUpdate();
 document.addEventListener("visibilitychange", () => { if (!document.hidden) checkUpdate(); });
