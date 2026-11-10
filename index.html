@@ -2,7 +2,7 @@
 <html lang="it">
 <head>
 <meta charset="utf-8">
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'sha256-3UEUDENHO6bHS6ebfgbekUnwEzdpNgCbqj74L46qTRQ=' 'sha256-Tb98Xwzi850OFNgEtxujNfM6soXGPGcAwR8ucqiW6xY='; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data: blob:; connect-src 'self' https://api.anthropic.com https://api.github.com data: blob:; manifest-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'sha256-3UEUDENHO6bHS6ebfgbekUnwEzdpNgCbqj74L46qTRQ=' 'sha256-u4mTh5hXpl/mmr75LUyWHtvCeYAnomerxR9YkkLVo6Y='; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data: blob:; connect-src 'self' https://api.anthropic.com https://api.github.com data: blob:; manifest-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
 <title>Spese</title>
 <meta name="apple-mobile-web-app-capable" content="yes">
@@ -766,6 +766,7 @@ body.selmode #vTx .tx.sel::after{content:"✓";background:var(--fg);border-color
 <div id="exitdlg" hidden data-html=""><div class="exitcard"><h3>Vuoi uscire dall'app?</h3><p>I tuoi dati restano salvati sul telefono.</p><div class="exitbtns"><button class="btn" data-act="exitStay">Resta</button><button class="btn danger" data-act="exitGo">Esci</button></div></div></div>
 <section class="sheet" id="sBulk" aria-label="Movimenti selezionati"></section>
 <section class="sheet" id="sGroup" aria-label="Budget condiviso"></section>
+<section class="sheet" id="sVers" aria-label="Versioni precedenti"></section>
 <section class="sheet" id="sAsk" aria-label="Prodotti da chiarire"></section>
 <section class="sheet" id="sMan" aria-label="Prodotti a mano"></section>
 <section class="sheet" id="sSet" aria-label="Impostazioni"></section>
@@ -776,7 +777,7 @@ body.selmode #vTx .tx.sel::after{content:"✓";background:var(--fg);border-color
 const $ = (s, r = document) => r.querySelector(s);
 const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 const KEY = "spese.data";
-const BUILD = "20261110102619";
+const BUILD = "20261110220450";
 /* icone delle categorie (24×24, tratto) */
 const ICONS = {
   grafico: '<path d="M3.5 17 9.5 11l4 4 7-8"/><path d="M15 7h5.5v5.5"/>',
@@ -3026,7 +3027,7 @@ function ghBox(){
     <div class="ghstat${GH.err ? " err" : ""}" id="ghStat"><i></i><span>${ghBusy ? "Backup in corso…" : GH.err ? "Backup non riuscito" : "Backup attivo"}<small>${GH.err ? esc(GH.err) : "Ultimo backup: " + ago(GH.last)} · ${esc(GH.repo)}</small></span></div>
     <button class="list-item" data-act="ghNow" style="border-top:1px solid var(--line)"><span>Fai il backup adesso</span>${ICON_CHEV}</button>
     <button class="list-item" data-act="ghRestore"><span>Ripristina dal backup<small>sostituisce i dati di questo telefono</small></span>${ICON_CHEV}</button>
-    <a class="list-item" href="https://github.com/${esc(GH.repo)}/commits" target="_blank" rel="noopener" style="color:inherit;text-decoration:none"><span>Vedi le versioni precedenti<small>la cronologia su GitHub</small></span>${ICON_CHEV}</a>
+    <button class="list-item" data-act="ghVers"><span>Versioni precedenti<small>scegli una versione salvata e ripristinala</small></span>${ICON_CHEV}</button>
     <button class="list-item danger" data-act="ghOff"><span>Scollega il backup</span></button></div>`;
   return `<div class="panel"><div class="ghform">
     <input type="text" id="ghRepo" placeholder="utente/repository, es. tuo-utente/spese-backup" value="${esc(GH.repo || "")}" autocomplete="off" autocapitalize="off" spellcheck="false">
@@ -3064,6 +3065,35 @@ async function ghConnect(){
     ghReady = true; await backupNow(true);
   } catch (e) { const m = ghMsg(e); GH = {}; ghSave(); toast(m); }
   ghPaint();
+}
+/* versioni precedenti del backup: l'elenco arriva dall'API di GitHub con il token (funziona anche col repository privato; la pagina web di GitHub invece dà «404» se nel browser non hai fatto l'accesso) */
+const versHead = `<div class="pbar"><button class="icon-btn" data-act="close" aria-label="Chiudi">${ICON_X}</button><h3>Versioni precedenti</h3></div>`;
+const versWhen = t => { const d = new Date(t), y = d.getFullYear() !== new Date().getFullYear(); return d.toLocaleString("it-IT", { day: "numeric", month: "long", ...(y ? { year: "numeric" } : {}), hour: "2-digit", minute: "2-digit" }); };
+async function openVers(){
+  $("#sVers").innerHTML = versHead + `<p class="help" style="padding:0 16px">Carico le versioni…</p>`; open("#sVers");
+  try {
+    const r = await ghFetch("/commits?path=" + GH_FILE + "&per_page=40"); if (!r.ok) throw r;
+    S.vers = (await r.json()).map(c => ({ sha: c.sha, t: c.commit?.committer?.date || c.commit?.author?.date || "" })).filter(x => /^[0-9a-f]{40}$/.test(x.sha) && x.t);
+    drawVers();
+  } catch (e) { $("#sVers").innerHTML = versHead + `<p class="help" style="padding:0 16px">${esc(ghMsg(e))}</p>`; }
+}
+function drawVers(){
+  const v = S.vers || [];
+  $("#sVers").innerHTML = versHead + `<p class="help" style="padding:0 16px 10px">Ogni volta che l'app salva su GitHub viene conservata una versione. Toccane una per riportare i dati di questo telefono a quel momento.</p>
+    <div class="section" style="padding-top:0">${v.length ? `<div class="panel">${v.map((x, i) => `<button class="list-item" data-vers="${esc(x.sha)}"><span>${esc(versWhen(x.t))}<small>${i === 0 ? "versione più recente" : "versione salvata"}</small></span>${ICON_CHEV}</button>`).join("")}</div>` : `<p class="help">Non ci sono ancora versioni salvate.</p>`}</div>
+    <p class="help" style="padding:4px 16px 0">Vedi al massimo le ultime 40 versioni. Preferisci la pagina di GitHub? <a href="https://github.com/${esc(GH.repo)}/commits" target="_blank" rel="noopener">Aprila qui</a>: per un repository privato GitHub risponde «404» se nello stesso browser non hai fatto l'accesso al tuo account.</p>`;
+}
+async function restoreVers(sha){
+  if (!/^[0-9a-f]{40}$/.test(sha)) return;
+  const x = (S.vers || []).find(y => y.sha === sha);
+  try {
+    const r = await ghFetch("/contents/" + GH_FILE + "?ref=" + sha, { raw: true }); if (!r.ok) throw r;
+    let raw = null; try { raw = JSON.parse(await r.text()); } catch {}
+    const data = sanitize(raw);
+    if (!data){ toast("Questa versione non è valida"); return; }
+    if (!confirm(`Ripristinare la versione del ${x ? versWhen(x.t) : "backup"} (${movs(data.tx.length)})? I dati di questo telefono verranno sostituiti.`)) return;
+    applyData(data); close(); render(); ghPaint(); toast("Versione ripristinata");
+  } catch (e) { toast(ghMsg(e)); }
 }
 async function ghRestore(){
   try {
@@ -3182,6 +3212,7 @@ document.addEventListener("click", e => {
   if (d.ichart){ S.ichart = d.ichart; return renderInv(); }
   if (d.pkind){ readPlan(); S.plan.kind = d.pkind; return drawPlan(); }
   if (d.pfreq){ readPlan(); S.plan.freq = d.pfreq; return drawPlan(); }
+  if (d.vers){ return restoreVers(d.vers); }
   if (d.grp){ return openGroup(d.grp); }
   if (d.gcat){ readGroup(); const i = S.group.cats.indexOf(d.gcat); if (i < 0) S.group.cats.push(d.gcat); else S.group.cats.splice(i, 1); return drawGroup(); }
   if (d.bcat !== undefined){ S.bulk.cat = d.bcat; S.bulk.sub = null; return drawBulk(); }
@@ -3206,6 +3237,7 @@ document.addEventListener("click", e => {
     case "invPay": return invPay(d.id);
     case "invRestore": return invRestore();
     case "delRate": return delRate();
+    case "ghVers": return openVers();
     case "exitStay": return exitAsk(false);
     case "exitGo": return exitApp();
     case "newGroup": return openGroup();

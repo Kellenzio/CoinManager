@@ -111,6 +111,12 @@ Qualsiasi nuovo inserimento usa il **mese scelto con le frecce** (`S.month`): nu
 - `checkUpdate()` **non ricarica la pagina** se c'è un foglio aperto o una selezione in corso: riprova al controllo successivo.
 - Eliminare un piano (o la sua sottocategoria in Investimenti) elimina anche tutti i suoi versamenti (con «Annulla» dal foglio del piano).
 
+## Versioni precedenti del backup
+
+- «Versioni precedenti» (impostazioni → Backup automatico) apre il foglio `#sVers` (`openVers/drawVers/restoreVers`): l'elenco arriva dall'API `GET /commits?path=spese.json` con il token, quindi
+  funziona anche se la pagina web di GitHub darebbe «404» (repository privato e nessun accesso nel browser). Toccando una versione si scarica `spese.json?ref=<sha>`, si passa da `sanitize()`
+  e si applica con `applyData()` (poi il backup normale la riscrive come versione più recente). Non impostare `GH.sha` sulla versione vecchia: servirebbe lo sha attuale del file.
+
 ## Tasto indietro del telefono
 
 - Sopra la voce iniziale della cronologia l'app tiene **sei voci di scorta** (`history.state.spese` = profondità 1…6, `fillGuard()`): ogni «indietro» (tasto o gesto) ne consuma una,
