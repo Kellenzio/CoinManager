@@ -2,7 +2,7 @@
 <html lang="it">
 <head>
 <meta charset="utf-8">
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'sha256-3UEUDENHO6bHS6ebfgbekUnwEzdpNgCbqj74L46qTRQ=' 'sha256-DHhW+mjfi73o7Et9jPnIKArUUJ4EH9eNTcilEKIpPwc='; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data: blob:; connect-src 'self' https://api.anthropic.com https://api.github.com data: blob:; manifest-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'sha256-3UEUDENHO6bHS6ebfgbekUnwEzdpNgCbqj74L46qTRQ=' 'sha256-Tb98Xwzi850OFNgEtxujNfM6soXGPGcAwR8ucqiW6xY='; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data: blob:; connect-src 'self' https://api.anthropic.com https://api.github.com data: blob:; manifest-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
 <title>Spese</title>
 <meta name="apple-mobile-web-app-capable" content="yes">
@@ -776,7 +776,7 @@ body.selmode #vTx .tx.sel::after{content:"✓";background:var(--fg);border-color
 const $ = (s, r = document) => r.querySelector(s);
 const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 const KEY = "spese.data";
-const BUILD = "20261110101403";
+const BUILD = "20261110102619";
 /* icone delle categorie (24×24, tratto) */
 const ICONS = {
   grafico: '<path d="M3.5 17 9.5 11l4 4 7-8"/><path d="M15 7h5.5v5.5"/>',
@@ -3403,16 +3403,22 @@ setInterval(() => { if (document.querySelector(".sheet.open")) saveDraft(); }, 3
 if (BOOT_DRAFT) restoreDraft(BOOT_DRAFT);
 
 /* ---------- tasto «indietro» del telefono (e gesto indietro): torna al menu precedente invece di chiudere l'app ----------
-   La pagina tiene sempre una voce di cronologia in più: premere indietro la consuma, l'app esegue UN passo indietro
-   (chiude la scheda in alto → esce dalla selezione → torna a Movimenti) e la voce viene rimessa. Da Movimenti chiede se uscire. */
-function ensureGuard(){ if (!history.state || history.state.spese !== 1) history.pushState({ spese: 1 }, ""); }
+   Sopra la voce iniziale della cronologia ci sono sempre alcune voci di scorta (history.state.spese = profondità 1…N). Ogni pressione di «indietro»
+   ne consuma una e l'app esegue UN passo (chiude la scheda in alto → esce dalla selezione → torna a Movimenti; da Movimenti chiede se uscire).
+   Le voci si aggiungono SOLO durante un tocco: Chrome su Android salta quelle create senza un gesto dell'utente (per questo una sola voce non bastava
+   per due «indietro» di fila). Quando compare la domanda «vuoi uscire?» si torna alla voce iniziale: un ulteriore «indietro» esce davvero. */
+const GUARD_N = 6;
+const gdepth = () => history.state?.spese || 0;
+function fillGuard(){ for (let i = 0; i < GUARD_N && gdepth() < GUARD_N; i++) history.pushState({ spese: gdepth() + 1 }, ""); }
+let unwinding = 0;
 function exitAsk(on){
-  S.exitAsk = on; const d = $("#exitdlg");
+  const d = $("#exitdlg");
   if (!d.dataset.html) d.dataset.html = d.querySelector(".exitcard").innerHTML;
-  d.querySelector(".exitcard").innerHTML = d.dataset.html; d.hidden = !on;
-  if (!on) ensureGuard();
+  S.exitAsk = on; d.querySelector(".exitcard").innerHTML = d.dataset.html; d.hidden = !on;
+  if (on){ const k = gdepth(); if (k > 0){ unwinding++; history.go(-k); } }   // alla voce iniziale: il prossimo «indietro» del telefono esce
+  else fillGuard();
 }
-/* ritorna false quando NON si deve rimettere la voce di cronologia (è la domanda «vuoi uscire?»: un secondo «indietro» esce davvero) */
+/* ritorna false quando è comparsa la domanda «vuoi uscire?» */
 function onBack(){
   if (S.exitAsk){ exitAsk(false); return true; }
   if (document.querySelector(".sheet.open")){ close(); return true; }
@@ -3431,9 +3437,12 @@ function exitApp(){
   }, 700);
 }
 if (history.state?.spese === undefined) history.replaceState({ spese: 0 }, "");   // dopo un ricaricamento la cronologia è già a posto
-ensureGuard();
-window.addEventListener("popstate", () => { if (onBack() !== false) ensureGuard(); });
-document.addEventListener("pointerdown", () => { if (!S.exitAsk) ensureGuard(); }, true);   // Chrome ignora le voci aggiunte senza un tocco dell'utente: si rimettono al primo tocco
+window.addEventListener("popstate", () => {
+  if (unwinding){ unwinding--; return; }          // movimento di cronologia fatto da noi
+  if (onBack() === false) return;
+  if (gdepth() < 1) history.pushState({ spese: 1 }, "");   // finite le voci di scorta: se ne rimette una (può essere saltata, al prossimo tocco si riempie di nuovo)
+});
+document.addEventListener("pointerdown", () => { if (!S.exitAsk) fillGuard(); }, true);
 
 checkUpdate();
 document.addEventListener("visibilitychange", () => { if (!document.hidden) checkUpdate(); });

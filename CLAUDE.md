@@ -113,10 +113,12 @@ Qualsiasi nuovo inserimento usa il **mese scelto con le frecce** (`S.month`): nu
 
 ## Tasto indietro del telefono
 
-- La pagina tiene sempre una voce di cronologia in più (`history.state.spese === 1`, `ensureGuard()`): premere indietro (o il gesto indietro) scatena `popstate` e `onBack()` fa UN passo:
-  chiude la scheda in alto → esce dalla selezione multipla → torna a Movimenti. Da Movimenti compare «Vuoi uscire dall'app?» (`#exitdlg`): *Resta* rimette la voce,
-  *Esci* prova `history.back()`/`window.close()` e, se il telefono non lo permette, chiede di premere ancora indietro (con la domanda aperta la voce NON viene rimessa:
-  un secondo indietro esce davvero). Non rimettere la voce dentro `exitApp()`.
+- Sopra la voce iniziale della cronologia l'app tiene **sei voci di scorta** (`history.state.spese` = profondità 1…6, `fillGuard()`): ogni «indietro» (tasto o gesto) ne consuma una,
+  scatena `popstate` e `onBack()` fa UN passo: chiude la scheda in alto → esce dalla selezione multipla → torna a Movimenti. Da Movimenti compare «Vuoi uscire dall'app?» (`#exitdlg`):
+  si torna alla voce iniziale (`history.go(-profondità)`, con `unwinding` per ignorare quel `popstate`), quindi un ulteriore «indietro» del telefono esce davvero.
+  *Resta* riempie di nuovo le voci; *Esci* prova `history.back()`/`window.close()` e, se il telefono non lo permette, chiede di premere ancora indietro.
+- **Le voci si aggiungono solo dentro un tocco** (`pointerdown`): Chrome su Android salta le voci create senza gesto dell'utente (history manipulation intervention),
+  per questo una sola voce rimessa dentro `popstate` non bastava per due «indietro» di fila. Non aggiungere voci in altri momenti e non usare `ensureGuard`/una sola voce.
 
 ## Spese a rate: modifica
 
